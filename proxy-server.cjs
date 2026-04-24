@@ -4,6 +4,10 @@ const express = require('express');
 const cors    = require('cors');
 const https   = require('https');
 const crypto  = require('crypto');
+
+// ── AI Service Config ────────────────────────────────────────────────────────
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const HF_SPACE_URL  = process.env.HF_SPACE_URL;
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const app  = express();
@@ -11,6 +15,7 @@ const PORT = 3000;
 
 // In-memory token store: shop domain → access_token (use a DB in production)
 const tokenStore = new Map();
+const policyStore = new Map(); // shop → { policy: string, generatedAt: number }
 
 // ── Shopify OAuth Config ─────────────────────────────────────────────────────
 const SHOPIFY_CLIENT_ID     = process.env.SHOPIFY_CLIENT_ID;
@@ -365,28 +370,99 @@ app.get('/api/shopify/discounts', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ██  HUGGING FACE INFERENCE PROXY
+// ██  AI ROUTES — GEMINI POLICY + GEMMA DEEP ANALYSIS
 // ══════════════════════════════════════════════════════════════════════════════
 
-app.post('/api/huggingface', async (req, res) => {
-  const token    = req.headers['x-hf-token'];
-  const provider = req.headers['x-hf-provider'] || 'novita';
-  const modelId  = req.headers['x-hf-model']    || 'qwen/qwen-2.5-72b-instruct';
-  if (!token) return res.status(400).json({ error: 'Missing x-hf-token header' });
+// ── Generate Global Policy (Gemini) — stored server-side, NEVER sent to frontend ──
+app.post('/api/policy/generate', async (req, res) => {
+  if (!GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
 
-  const HF_URL = `https://router.huggingface.co/${provider}/v1/chat/completions`;
+  const { shop, storeContext } = req.body;
+  if (!shop || !storeContext) return res.status(400).json({ error: 'Missing shop or storeContext' });
+
+  const prompt = `You are a Shopify store policy analyst. Given the following store data, create a single dense paragraph summarizing ALL of the store's policies, return/refund rules, shipping terms, legal disclaimers, and compliance requirements. Include any implicit rules from product descriptions and store settings. Be thorough and specific.\n\nStore Data:\n${JSON.stringify(storeContext, null, 2)}`;
+
   try {
-    const payload = { model: modelId, ...req.body };
-    const bodyStr = JSON.stringify(payload);
-    const parsed = new URL(HF_URL);
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const payload = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
+    });
+
+    const geminiRes = await httpsRequest(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+    }, payload);
+
+    const data = geminiRes.json();
+    const policyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    if (!policyText) {
+      console.error('Gemini returned empty policy:', JSON.stringify(data));
+      return res.status(500).json({ error: 'Gemini returned empty response' });
+    }
+
+    policyStore.set(shop, { policy: policyText, generatedAt: Date.now() });
+    console.log(`🧠 Global policy generated for ${shop} (${policyText.length} chars)`);
+
+    // CRITICAL: Never return the policy text to the frontend
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Gemini policy error:', err.message);
+    return res.status(500).json({ error: 'Failed to generate policy: ' + err.message });
+  }
+});
+
+// ── Deep Product Analysis (Gemma 2B via HF Space) ────────────────────────────
+app.post('/api/audit/product', async (req, res) => {
+  if (!HF_SPACE_URL) return res.status(500).json({ error: 'HF_SPACE_URL not configured' });
+
+  const { shop, product } = req.body;
+  if (!shop || !product) return res.status(400).json({ error: 'Missing shop or product' });
+
+  const stored = policyStore.get(shop);
+  if (!stored) return res.status(400).json({ error: 'Global policy not generated yet. Call /api/policy/generate first.' });
+
+  const systemPrompt = `
+You are an elite Shopify compliance auditor. 
+You will be provided with a Global Store Policy and a specific Product's data. 
+Your job is to find contradictions, legal risks, or marketing violations.
+
+OUTPUT STRICTLY IN VALID JSON FORMAT. DO NOT USE MARKDOWN. DO NOT ADD CONVERSATIONAL TEXT.
+
+Example Output:
+{
+  "riskLevel": "HIGH",
+  "issues": [
+    "The global policy states 'No refunds', but the product description offers a '30-day money back guarantee'."
+  ],
+  "suggestions": [
+    "Remove the '30-day money back guarantee' from the product description to align with global policy."
+  ]
+}
+`;
+
+  const userMessage = `Global Store Policy:\n${stored.policy}\n\nProduct Data:\n${JSON.stringify(product, null, 2)}`;
+
+  try {
+    const payload = JSON.stringify({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      max_tokens: 1024,
+      temperature: 0.3,
+    });
+
+    const parsed = new URL(HF_SPACE_URL);
     const hfRes = await new Promise((resolve, reject) => {
       const r = https.request({
-        hostname: parsed.hostname, path: parsed.pathname,
+        hostname: parsed.hostname,
+        path: parsed.pathname + parsed.search,
         port: 443, method: 'POST', family: 4, timeout: 120000,
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(bodyStr),
+          'Content-Length': Buffer.byteLength(payload),
         },
       }, (response) => {
         let data = '';
@@ -396,15 +472,51 @@ app.post('/api/huggingface', async (req, res) => {
           catch { resolve({ status: response.statusCode, body: data }); }
         });
       });
-      r.on('timeout', () => { r.destroy(); reject(new Error('HF request timed out after 120s')); });
+      r.on('timeout', () => { r.destroy(); reject(new Error('HF Space request timed out after 120s')); });
       r.on('error', reject);
-      r.write(bodyStr);
+      r.write(payload);
       r.end();
     });
-    return res.status(hfRes.status).json(hfRes.body);
+
+    if (hfRes.status < 200 || hfRes.status >= 300) {
+      console.error(`HF Space error (${hfRes.status}):`, JSON.stringify(hfRes.body));
+      return res.status(hfRes.status).json({ error: 'HF Space returned an error', detail: hfRes.body });
+    }
+
+    // Extract content from OpenAI-compatible response
+    let rawContent = '';
+    if (hfRes.body?.choices?.[0]?.message?.content) {
+      rawContent = hfRes.body.choices[0].message.content;
+    } else {
+      rawContent = typeof hfRes.body === 'string' ? hfRes.body : JSON.stringify(hfRes.body);
+    }
+
+    // Parse the JSON from the model output
+    let analysis;
+    try {
+      // Strip markdown fences if present
+      let cleaned = rawContent.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        analysis = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+      } else {
+        analysis = JSON.parse(cleaned);
+      }
+    } catch (parseErr) {
+      console.error('Failed to parse Gemma response:', rawContent);
+      analysis = {
+        riskLevel: 'MEDIUM',
+        issues: ['Model returned unparseable output. Raw: ' + rawContent.slice(0, 200)],
+        suggestions: ['Try running the analysis again.'],
+      };
+    }
+
+    console.log(`🔍 Deep analysis for "${product.title}" → ${analysis.riskLevel}`);
+    return res.json(analysis);
   } catch (err) {
-    console.error(`HF proxy error [${provider}/${modelId}]:`, err.message);
-    return res.status(500).json({ error: err.message });
+    console.error('HF Space audit error:', err.message);
+    return res.status(500).json({ error: 'Deep analysis failed: ' + err.message });
   }
 });
 

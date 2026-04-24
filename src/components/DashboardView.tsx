@@ -1,102 +1,246 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Page, Layout, Card, Text, Badge, Button, BlockStack, InlineStack, Tabs, Box, Divider, InlineGrid, ProgressBar } from '@shopify/polaris';
-import JsonView from '@uiw/react-json-view';
-import { analyzeStore, type AuditResult, type AuditFinding } from '../lib/audit';
-import { AlertTriangle, AlertCircle, Info, ShieldCheck, CheckCircle2, XCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  Page, Layout, Card, Text, Badge, Button, BlockStack, InlineStack,
+  Box, InlineGrid, Spinner, Banner, Icon,
+} from '@shopify/polaris';
+import { SearchIcon } from '@shopify/polaris-icons';
 
 interface DashboardViewProps { data: any; }
 
-/* ── Audit Card ───────────────────────────────────────── */
-const sevCfg: Record<string, { icon: React.ReactNode; tone: 'critical'|'warning'|'info' }> = {
-  High: { icon: <AlertTriangle className="w-4 h-4 text-[#d82c0d]" />, tone: 'critical' },
-  Medium: { icon: <AlertCircle className="w-4 h-4 text-[#8a6116]" />, tone: 'warning' },
-  Low: { icon: <Info className="w-4 h-4 text-[#004777]" />, tone: 'info' },
+interface ProductAnalysis {
+  riskLevel: 'HIGH' | 'MEDIUM' | 'LOW' | 'SAFE';
+  issues: string[];
+  suggestions: string[];
+}
+
+const riskConfig: Record<string, { tone: 'critical' | 'warning' | 'info' | 'success'; label: string; color: string }> = {
+  HIGH:   { tone: 'critical', label: 'High Risk',   color: '#d82c0d' },
+  MEDIUM: { tone: 'warning',  label: 'Medium Risk', color: '#8a6116' },
+  LOW:    { tone: 'info',     label: 'Low Risk',    color: '#004777' },
+  SAFE:   { tone: 'success',  label: 'Safe',        color: '#008060' },
 };
 
-const AuditCard: React.FC<{ f: AuditFinding }> = ({ f }) => {
-  const [open, setOpen] = useState(false);
-  const c = sevCfg[f.severity] || sevCfg.Low;
-  
+/* ── Product Card ─────────────────────────────────────── */
+const ProductCard: React.FC<{
+  product: any;
+  shop: string;
+  policyReady: boolean;
+}> = ({ product, shop, policyReady }) => {
+  const [analysis, setAnalysis] = useState<ProductAnalysis | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [expanded, setExpanded] = useState(false);
+
+  const priceRange = product.variants?.length > 0
+    ? product.variants.map((v: any) => parseFloat(v.price)).filter((p: number) => !isNaN(p))
+    : [];
+  const minPrice = priceRange.length > 0 ? Math.min(...priceRange) : null;
+  const maxPrice = priceRange.length > 0 ? Math.max(...priceRange) : null;
+  const priceDisplay = minPrice !== null
+    ? minPrice === maxPrice ? `$${minPrice}` : `$${minPrice} – $${maxPrice}`
+    : 'No price';
+
+  const firstImage = product.images?.[0]?.url || null;
+
+  const runAnalysis = async () => {
+    setLoading(true);
+    setError('');
+    setAnalysis(null);
+    try {
+      const res = await fetch('http://localhost:3000/api/audit/product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shop, product }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `HTTP ${res.status}`);
+      }
+      const result = await res.json();
+      setAnalysis(result);
+      setExpanded(true);
+    } catch (err: any) {
+      setError(err.message || 'Analysis failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const risk = analysis ? riskConfig[analysis.riskLevel] || riskConfig.MEDIUM : null;
+
   return (
-    <Box paddingBlockStart="300" paddingBlockEnd="300">
-      <InlineStack align="start" gap="300" wrap={false}>
-        <Box paddingBlockStart="050">{c.icon}</Box>
-        <BlockStack gap="100">
-          <InlineStack align="start" gap="200" blockAlign="center">
-            <Text as="h4" variant="bodyMd" fontWeight="semibold">{f.title}</Text>
-            <Badge tone={c.tone}>{f.severity}</Badge>
-            <Text as="span" variant="bodySm" tone="subdued">{f.category}</Text>
-          </InlineStack>
-          
-          {f.productId !== 'Global' && f.productId && (
-            <Text as="p" variant="bodySm" tone="subdued">{f.productId}</Text>
-          )}
-          
-          <Text as="p" variant="bodyMd">{f.explanation}</Text>
-          
-          {f.fix_suggestion && (
-            <Box paddingBlockStart="100">
-              <Button variant="plain" onClick={() => setOpen(!open)}>
-                {open ? 'Hide suggestion' : 'View suggestion'}
-              </Button>
-            </Box>
-          )}
-          
-          {f.fix_suggestion && open && (
-            <Box paddingBlockStart="200">
-              <Box padding="300" background="bg-surface-secondary" borderRadius="100" borderColor="border" borderWidth="025">
-                <Text as="p" variant="bodyMd">
-                  <Text as="span" fontWeight="bold">Suggested Fix: </Text>
-                  {f.fix_suggestion}
+    <Card>
+      <BlockStack gap="400">
+        <InlineStack gap="400" align="start" wrap={false}>
+          {/* Product Image */}
+          <div style={{
+            width: 72, height: 72, borderRadius: 12, overflow: 'hidden',
+            background: '#f1f2f4', flexShrink: 0, display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            {firstImage ? (
+              <img src={firstImage} alt={product.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <Text as="span" tone="subdued" variant="bodySm">No img</Text>
+            )}
+          </div>
+
+          {/* Product Info */}
+          <BlockStack gap="100" >
+            <InlineStack gap="200" blockAlign="center">
+              <Text as="h3" variant="headingSm">{product.title}</Text>
+              <Badge tone={product.status === 'ACTIVE' ? 'success' : 'new'}>
+                {product.status || 'DRAFT'}
+              </Badge>
+              {analysis && risk && <Badge tone={risk.tone}>{risk.label}</Badge>}
+            </InlineStack>
+            <InlineStack gap="300">
+              {product.vendor && <Text as="span" variant="bodySm" tone="subdued">{product.vendor}</Text>}
+              {product.product_type && <Text as="span" variant="bodySm" tone="subdued">• {product.product_type}</Text>}
+              <Text as="span" variant="bodySm" fontWeight="semibold">{priceDisplay}</Text>
+              <Text as="span" variant="bodySm" tone="subdued">{product.total_inventory} in stock</Text>
+            </InlineStack>
+            {product.tags?.length > 0 && (
+              <InlineStack gap="100">
+                {product.tags.slice(0, 5).map((tag: string, i: number) => (
+                  <Badge key={i} tone="info">{tag}</Badge>
+                ))}
+                {product.tags.length > 5 && <Text as="span" variant="bodySm" tone="subdued">+{product.tags.length - 5}</Text>}
+              </InlineStack>
+            )}
+          </BlockStack>
+
+          {/* Action Button */}
+          <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
+            <Button
+              onClick={runAnalysis}
+              loading={loading}
+              disabled={!policyReady || loading}
+              variant="primary"
+              icon={SearchIcon}
+            >
+              {analysis ? 'Re-Analyze' : 'Run Deep Analysis'}
+            </Button>
+          </div>
+        </InlineStack>
+
+        {/* Error Banner */}
+        {error && (
+          <Banner tone="critical" onDismiss={() => setError('')}>
+            <p>{error}</p>
+          </Banner>
+        )}
+
+        {/* Analysis Results */}
+        {analysis && risk && (
+          <Box paddingBlockStart="200">
+            <div
+              onClick={() => setExpanded(!expanded)}
+              style={{
+                cursor: 'pointer', padding: '12px 16px', borderRadius: 12,
+                background: `${risk.color}10`, border: `1px solid ${risk.color}30`,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <InlineStack align="space-between" blockAlign="center">
+                <InlineStack gap="200" blockAlign="center">
+                  <div style={{
+                    width: 10, height: 10, borderRadius: '50%',
+                    background: risk.color,
+                  }} />
+                  <Text as="span" variant="bodyMd" fontWeight="semibold">
+                    {analysis.riskLevel} — {analysis.issues.length} issue{analysis.issues.length !== 1 ? 's' : ''} found
+                  </Text>
+                </InlineStack>
+                <Text as="span" variant="bodySm" tone="subdued">
+                  {expanded ? '▲ Collapse' : '▼ Expand'}
                 </Text>
+              </InlineStack>
+            </div>
+
+            {expanded && (
+              <Box paddingBlockStart="300">
+                <BlockStack gap="300">
+                  {/* Issues */}
+                  {analysis.issues.length > 0 && (
+                    <BlockStack gap="200">
+                      <Text as="h4" variant="headingSm">⚠️ Issues</Text>
+                      {analysis.issues.map((issue, i) => (
+                        <Box key={i} padding="300" background="bg-surface-critical" borderRadius="200">
+                          <Text as="p" variant="bodyMd">{issue}</Text>
+                        </Box>
+                      ))}
+                    </BlockStack>
+                  )}
+
+                  {/* Suggestions */}
+                  {analysis.suggestions?.length > 0 && (
+                    <BlockStack gap="200">
+                      <Text as="h4" variant="headingSm">💡 Suggestions</Text>
+                      {analysis.suggestions.map((sug, i) => (
+                        <Box key={i} padding="300" background="bg-surface-success" borderRadius="200">
+                          <Text as="p" variant="bodyMd">{sug}</Text>
+                        </Box>
+                      ))}
+                    </BlockStack>
+                  )}
+                </BlockStack>
               </Box>
-            </Box>
-          )}
-        </BlockStack>
-      </InlineStack>
-    </Box>
+            )}
+          </Box>
+        )}
+      </BlockStack>
+    </Card>
   );
 };
 
 /* ── Main Dashboard ───────────────────────────────────── */
 export const DashboardView: React.FC<DashboardViewProps> = ({ data }) => {
-  const [audit, setAudit] = useState<AuditResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedTab, setSelectedTab] = useState(0);
-
   const ctx = data?.store_context || {};
   const catalog = data?.catalog || [];
   const collections = data?.collections || [];
   const discounts = data?.discounts || [];
-  const blogs = data?.blog_content || [];
-  const policies = ctx?.native_policies || {};
-  const totalInv = catalog.reduce((s: number, p: any) => s + (p.total_inventory || 0), 0);
   const activeProducts = catalog.filter((p: any) => p.status === 'ACTIVE').length;
+  const totalInv = catalog.reduce((s: number, p: any) => s + (p.total_inventory || 0), 0);
 
-  useEffect(() => {
-    setLoading(true);
-    analyzeStore(data).then(r => { setAudit(r); setLoading(false); }).catch(e => { console.error(e); setAudit({ health_score: 0, summary: 'Audit failed: ' + e.message, findings: [], modelResults: [] }); setLoading(false); });
-  }, [data]);
+  const [policyReady, setPolicyReady] = useState(false);
+  const [policyLoading, setPolicyLoading] = useState(false);
+  const [policyError, setPolicyError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const highC = audit?.findings.filter(f => f.severity === 'High').length || 0;
-  const contraC = audit?.findings.filter(f => f.category === 'Contradiction').length || 0;
-  const mismatchC = audit?.findings.filter(f => f.category === 'Mismatch').length || 0;
-  const complianceC = audit?.findings.filter(f => f.category === 'Compliance').length || 0;
+  const shop = sessionStorage.getItem('shopify_shop') || ctx?.domain || '';
 
-  const policyScore = Math.max(0, 100 - contraC * 20);
-  const dataScore = Math.max(0, 100 - mismatchC * 15);
-  const compScore = Math.max(0, 100 - complianceC * 25);
-  const catalogScore = catalog.length > 0 ? Math.min(100, Math.round((activeProducts / catalog.length) * 100)) : 100;
-  const contentScore = Math.min(100, 40 + blogs.length * 10 + Object.keys(policies).length * 15);
+  const generatePolicy = async () => {
+    setPolicyLoading(true);
+    setPolicyError('');
+    try {
+      const res = await fetch('http://localhost:3000/api/policy/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shop, storeContext: ctx }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error || `HTTP ${res.status}`);
+      }
+      setPolicyReady(true);
+    } catch (err: any) {
+      setPolicyError(err.message || 'Failed to generate policy');
+    } finally {
+      setPolicyLoading(false);
+    }
+  };
 
-  const tabs = [
-    { id: 'overview', content: 'Overview' },
-    { id: 'findings', content: `Findings${audit ? ` (${audit.findings.length})` : ''}` },
-    { id: 'models', content: 'Model Comparison' },
-    { id: 'data', content: 'Raw Data' },
-  ];
-
-  const handleTabChange = useCallback((selectedTabIndex: number) => setSelectedTab(selectedTabIndex), []);
+  const filteredCatalog = catalog.filter((p: any) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      p.title?.toLowerCase().includes(q) ||
+      p.vendor?.toLowerCase().includes(q) ||
+      p.product_type?.toLowerCase().includes(q) ||
+      p.tags?.some((t: string) => t.toLowerCase().includes(q))
+    );
+  });
 
   const handleDownload = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -108,279 +252,125 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data }) => {
 
   return (
     <Page
-      title="Store Dashboard"
+      title={ctx?.name || 'Store Dashboard'}
+      subtitle={`${catalog.length} products · ${collections.length} collections · ${discounts.length} discounts`}
       primaryAction={{ content: 'Export Data', onAction: handleDownload }}
     >
-      <Box paddingBlockEnd="400">
-        <Tabs tabs={tabs} selected={selectedTab} onSelect={handleTabChange}>
-          <Box paddingBlockStart="400">
-            {/* ═══ OVERVIEW TAB ═══ */}
-            {selectedTab === 0 && (
-              <Layout>
-                <Layout.Section>
-                  <InlineGrid columns={{ xs: 2, sm: 3, md: 5 }} gap="400">
-                    <Card>
-                      <BlockStack gap="100">
-                        <Text as="h3" variant="headingSm" tone="subdued">Products</Text>
-                        <Text as="p" variant="headingLg">{catalog.length}</Text>
-                        <Text as="p" variant="bodySm" tone="subdued">{activeProducts} active</Text>
-                      </BlockStack>
-                    </Card>
-                    <Card>
-                      <BlockStack gap="100">
-                        <Text as="h3" variant="headingSm" tone="subdued">Collections</Text>
-                        <Text as="p" variant="headingLg">{collections.length}</Text>
-                      </BlockStack>
-                    </Card>
-                    <Card>
-                      <BlockStack gap="100">
-                        <Text as="h3" variant="headingSm" tone="subdued">Customers</Text>
-                        <Text as="p" variant="headingLg">{ctx?.stats?.customers_count || 0}</Text>
-                      </BlockStack>
-                    </Card>
-                    <Card>
-                      <BlockStack gap="100">
-                        <Text as="h3" variant="headingSm" tone="subdued">Orders</Text>
-                        <Text as="p" variant="headingLg">{ctx?.stats?.orders_count || 0}</Text>
-                      </BlockStack>
-                    </Card>
-                    <Card>
-                      <BlockStack gap="100">
-                        <Text as="h3" variant="headingSm" tone="subdued">Inventory</Text>
-                        <Text as="p" variant="headingLg">{totalInv.toLocaleString()}</Text>
-                        <Text as="p" variant="bodySm" tone="subdued">{discounts.length} discounts</Text>
-                      </BlockStack>
-                    </Card>
-                  </InlineGrid>
-                </Layout.Section>
+      <BlockStack gap="400">
+        {/* Stats Row */}
+        <InlineGrid columns={{ xs: 2, sm: 3, md: 5 }} gap="400">
+          <Card>
+            <BlockStack gap="100">
+              <Text as="h3" variant="headingSm" tone="subdued">Products</Text>
+              <Text as="p" variant="headingLg">{catalog.length}</Text>
+              <Text as="p" variant="bodySm" tone="subdued">{activeProducts} active</Text>
+            </BlockStack>
+          </Card>
+          <Card>
+            <BlockStack gap="100">
+              <Text as="h3" variant="headingSm" tone="subdued">Collections</Text>
+              <Text as="p" variant="headingLg">{collections.length}</Text>
+            </BlockStack>
+          </Card>
+          <Card>
+            <BlockStack gap="100">
+              <Text as="h3" variant="headingSm" tone="subdued">Customers</Text>
+              <Text as="p" variant="headingLg">{ctx?.stats?.customers_count || 0}</Text>
+            </BlockStack>
+          </Card>
+          <Card>
+            <BlockStack gap="100">
+              <Text as="h3" variant="headingSm" tone="subdued">Orders</Text>
+              <Text as="p" variant="headingLg">{ctx?.stats?.orders_count || 0}</Text>
+            </BlockStack>
+          </Card>
+          <Card>
+            <BlockStack gap="100">
+              <Text as="h3" variant="headingSm" tone="subdued">Inventory</Text>
+              <Text as="p" variant="headingLg">{totalInv.toLocaleString()}</Text>
+            </BlockStack>
+          </Card>
+        </InlineGrid>
 
-                <Layout.Section variant="oneHalf">
-                  <Card>
-                    <BlockStack gap="400">
-                      <Text as="h2" variant="headingMd">Store Health Score</Text>
-                      {loading ? (
-                        <Box padding="600">
-                          <Text as="p" alignment="center" tone="subdued">Analyzing with 3 AI models…</Text>
-                        </Box>
-                      ) : audit && (
-                        <BlockStack gap="400" align="center" inlineAlign="center">
-                          <div className="flex flex-col items-center">
-                            <Text as="h1" variant="heading3xl" fontWeight="bold">{audit.health_score}</Text>
-                            <Box paddingBlockStart="100">
-                              <Badge tone={audit.health_score >= 80 ? 'success' : audit.health_score >= 60 ? 'warning' : 'critical'}>
-                                {audit.health_score >= 80 ? 'Excellent' : audit.health_score >= 60 ? 'Fair' : 'Critical'} Score
-                              </Badge>
-                            </Box>
-                          </div>
-                          <Text as="p" alignment="center" tone="subdued">{audit.summary}</Text>
-                        </BlockStack>
-                      )}
-                    </BlockStack>
-                  </Card>
-                </Layout.Section>
+        {/* Policy Generation Banner */}
+        {!policyReady && (
+          <Card>
+            <BlockStack gap="300">
+              <Text as="h2" variant="headingMd">🧠 AI Policy Engine</Text>
+              <Text as="p" variant="bodyMd" tone="subdued">
+                Generate a hidden global policy using Gemini AI. This policy is used as context for per-product deep analysis and is never displayed.
+              </Text>
+              {policyError && (
+                <Banner tone="critical" onDismiss={() => setPolicyError('')}>
+                  <p>{policyError}</p>
+                </Banner>
+              )}
+              <InlineStack>
+                <Button onClick={generatePolicy} loading={policyLoading} variant="primary">
+                  {policyLoading ? 'Generating Policy…' : 'Generate Global Policy'}
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Card>
+        )}
 
-                <Layout.Section variant="oneHalf">
-                  <Card>
-                    <BlockStack gap="400">
-                      <Text as="h2" variant="headingMd">Parameter Scores</Text>
-                      {loading ? (
-                        <Box padding="600"><Text as="p" alignment="center" tone="subdued">Loading parameters...</Text></Box>
-                      ) : (
-                        <BlockStack gap="300">
-                          <BlockStack gap="100">
-                            <InlineStack align="space-between"><Text as="span" variant="bodyMd">Policy Consistency</Text><Text as="span" variant="bodyMd" tone="subdued">{policyScore}%</Text></InlineStack>
-                            <ProgressBar progress={policyScore} tone="success" size="small" />
-                          </BlockStack>
-                          <BlockStack gap="100">
-                            <InlineStack align="space-between"><Text as="span" variant="bodyMd">Data Integrity</Text><Text as="span" variant="bodyMd" tone="subdued">{dataScore}%</Text></InlineStack>
-                            <ProgressBar progress={dataScore} tone="success" size="small" />
-                          </BlockStack>
-                          <BlockStack gap="100">
-                            <InlineStack align="space-between"><Text as="span" variant="bodyMd">Compliance Safety</Text><Text as="span" variant="bodyMd" tone="subdued">{compScore}%</Text></InlineStack>
-                            <ProgressBar progress={compScore} tone="success" size="small" />
-                          </BlockStack>
-                          <BlockStack gap="100">
-                            <InlineStack align="space-between"><Text as="span" variant="bodyMd">Catalog Health</Text><Text as="span" variant="bodyMd" tone="subdued">{catalogScore}%</Text></InlineStack>
-                            <ProgressBar progress={catalogScore} tone="success" size="small" />
-                          </BlockStack>
-                          <BlockStack gap="100">
-                            <InlineStack align="space-between"><Text as="span" variant="bodyMd">Content Richness</Text><Text as="span" variant="bodyMd" tone="subdued">{contentScore}%</Text></InlineStack>
-                            <ProgressBar progress={contentScore} tone="success" size="small" />
-                          </BlockStack>
-                        </BlockStack>
-                      )}
-                    </BlockStack>
-                  </Card>
-                </Layout.Section>
+        {policyReady && (
+          <Banner tone="success">
+            <p>✅ Global policy generated. You can now run deep analysis on any product below.</p>
+          </Banner>
+        )}
 
-                {/* Quick Insights */}
-                {!loading && audit && audit.findings.length > 0 && (
-                  <Layout.Section>
-                    <Card>
-                      <BlockStack gap="400">
-                        <InlineStack align="space-between" blockAlign="center">
-                          <Text as="h2" variant="headingMd">Top Issues</Text>
-                          <Button variant="plain" onClick={() => setSelectedTab(1)}>View all</Button>
-                        </InlineStack>
-                        <BlockStack gap="0">
-                          {audit.findings.filter(f => f.severity === 'High').slice(0, 3).map((f, i) => (
-                            <Box key={`high-${i}`} paddingBlockEnd={i < 2 ? "300" : "0"} borderBlockEndWidth={i < 2 ? "025" : "0"} borderColor="border">
-                              <AuditCard f={f} />
-                            </Box>
-                          ))}
-                          {highC === 0 && audit.findings.slice(0, 3).map((f, i) => (
-                            <Box key={`all-${i}`} paddingBlockEnd={i < 2 ? "300" : "0"} borderBlockEndWidth={i < 2 ? "025" : "0"} borderColor="border">
-                              <AuditCard f={f} />
-                            </Box>
-                          ))}
-                        </BlockStack>
-                      </BlockStack>
-                    </Card>
-                  </Layout.Section>
-                )}
-              </Layout>
-            )}
+        {/* Products List */}
+        <Layout>
+          <Layout.Section>
+            <BlockStack gap="400">
+              <InlineStack align="space-between" blockAlign="center">
+                <Text as="h2" variant="headingMd">Product Catalog</Text>
+                <Text as="span" variant="bodySm" tone="subdued">{filteredCatalog.length} product{filteredCatalog.length !== 1 ? 's' : ''}</Text>
+              </InlineStack>
 
-            {/* ═══ FINDINGS TAB ═══ */}
-            {selectedTab === 1 && (
-              <Layout>
-                <Layout.Section>
-                  {loading ? (
-                    <Card>
-                      <Box padding="1000">
-                        <Text as="p" alignment="center" tone="subdued">Running multi-model audit…</Text>
-                      </Box>
-                    </Card>
-                  ) : audit && audit.findings.length > 0 ? (
-                    <Card>
-                      <BlockStack gap="400">
-                        <Text as="h2" variant="headingMd">All Findings</Text>
-                        <BlockStack gap="0">
-                          {audit.findings.map((f, i) => (
-                            <Box key={i} borderBlockEndWidth={i !== audit.findings.length - 1 ? "025" : "0"} borderColor="border">
-                              <AuditCard f={f} />
-                            </Box>
-                          ))}
-                        </BlockStack>
-                      </BlockStack>
-                    </Card>
-                  ) : (
-                    <Card>
-                      <Box padding="1000">
-                        <BlockStack gap="300" inlineAlign="center">
-                          <ShieldCheck className="w-10 h-10 text-[#008060] mx-auto" />
-                          <Text as="p" variant="headingMd" alignment="center">No issues found.</Text>
-                          <Text as="p" alignment="center" tone="subdued">Your store looks perfectly healthy!</Text>
-                        </BlockStack>
-                      </Box>
-                    </Card>
-                  )}
-                </Layout.Section>
-              </Layout>
-            )}
+              {/* Search */}
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="Search products by name, vendor, type, or tag…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%', padding: '10px 16px 10px 40px',
+                    borderRadius: 10, border: '1px solid #c9cccf',
+                    fontSize: 14, outline: 'none', background: '#fff',
+                    fontFamily: 'inherit',
+                  }}
+                />
+                <div style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }}>
+                  <Icon source={SearchIcon} />
+                </div>
+              </div>
 
-            {/* ═══ MODELS TAB ═══ */}
-            {selectedTab === 2 && (
-              <Layout>
-                <Layout.Section>
-                  {loading ? (
-                     <Card>
-                      <Box padding="1000">
-                        <Text as="p" alignment="center" tone="subdued">Waiting for all models to respond…</Text>
-                      </Box>
-                    </Card>
-                  ) : audit && (() => {
-                    const modelData = audit.modelResults.map(mr => {
-                      const findings = audit.findings.filter(f => f.detected_by === mr.modelId);
-                      const mHigh = findings.filter(f => f.severity === 'High').length;
-                      const mMed = findings.filter(f => f.severity === 'Medium').length;
-                      const mLow = findings.filter(f => f.severity === 'Low').length;
-                      let score = 100 - mHigh * 15 - mMed * 7 - mLow * 3;
-                      score = Math.max(0, Math.min(100, score));
-                      return { ...mr, findings, mHigh, mMed, mLow, score };
-                    });
-
-                    return (
-                    <BlockStack gap="400">
-                      <Card>
-                        <BlockStack gap="400">
-                          <Text as="h2" variant="headingMd">Model Responses</Text>
-                          <BlockStack gap="0">
-                            {modelData.map((m, i) => (
-                              <Box key={m.modelId} paddingBlockEnd={i !== modelData.length - 1 ? "400" : "0"} borderBlockEndWidth={i !== modelData.length - 1 ? "025" : "0"} borderColor="border">
-                                <Box paddingBlockStart={i !== 0 ? "400" : "0"}>
-                                  <InlineStack align="start" gap="300" wrap={false}>
-                                    <Box paddingBlockStart="050">
-                                      {m.status === 'success' ? <CheckCircle2 className="w-5 h-5 text-[#008060]" /> : <XCircle className="w-5 h-5 text-[#d82c0d]" />}
-                                    </Box>
-                                    <BlockStack gap="100">
-                                      <InlineStack align="start" gap="200" blockAlign="center">
-                                        <Text as="h3" variant="headingSm">{m.modelId}</Text>
-                                        {m.status === 'success' && <Badge tone="info">{m.findings.length} findings</Badge>}
-                                      </InlineStack>
-                                      {m.status === 'success' ? (
-                                        <Text as="p" variant="bodyMd" tone="subdued">
-                                          Found {m.mHigh} high, {m.mMed} medium, and {m.mLow} low severity issues.
-                                        </Text>
-                                      ) : (
-                                        <Text as="p" variant="bodyMd" tone="critical">{m.error || 'Failed to respond'}</Text>
-                                      )}
-                                    </BlockStack>
-                                  </InlineStack>
-                                </Box>
-                              </Box>
-                            ))}
-                          </BlockStack>
-                        </BlockStack>
-                      </Card>
-
-                      <InlineGrid columns={{ xs: 1, md: 3 }} gap="400">
-                        {modelData.map(m => (
-                          <Card key={m.modelId}>
-                            <BlockStack gap="400" align="center" inlineAlign="center">
-                              <Text as="h3" variant="headingSm">{m.modelId}</Text>
-                              {m.status === 'success' ? (
-                                <div className="flex flex-col items-center">
-                                  <Text as="h1" variant="headingXl" fontWeight="bold">{m.score}</Text>
-                                  <div className="flex justify-center gap-3 text-[13px] mt-4">
-                                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#d82c0d]" />{m.mHigh}</span>
-                                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#8a6116]" />{m.mMed}</span>
-                                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#004777]" />{m.mLow}</span>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex flex-col items-center py-4">
-                                  <XCircle className="w-8 h-8 text-[#d82c0d] mb-2" />
-                                  <Text as="p" tone="critical">Failed</Text>
-                                </div>
-                              )}
-                            </BlockStack>
-                          </Card>
-                        ))}
-                      </InlineGrid>
-                    </BlockStack>
-                    );
-                  })()}
-                </Layout.Section>
-              </Layout>
-            )}
-
-            {/* ═══ RAW DATA TAB ═══ */}
-            {selectedTab === 3 && (
-              <Layout>
-                <Layout.Section>
-                  <Card>
-                    <div className="bg-[#f4f6f8] text-[#202223] p-4 rounded-[4px] border border-[#ebeef0] overflow-auto max-h-[70vh]">
-                      <JsonView value={data} displayDataTypes={false} collapsed={2}
-                        style={{ '--w-rjv-background-color': 'transparent', '--w-rjv-color': '#202223', '--w-rjv-key-string': '#2c6ecb', '--w-rjv-info-color': '#6d7175' } as React.CSSProperties} />
-                    </div>
-                  </Card>
-                </Layout.Section>
-              </Layout>
-            )}
-          </Box>
-        </Tabs>
-      </Box>
+              {/* Product Cards */}
+              {filteredCatalog.length > 0 ? (
+                filteredCatalog.map((product: any, i: number) => (
+                  <ProductCard
+                    key={product.id || i}
+                    product={product}
+                    shop={shop}
+                    policyReady={policyReady}
+                  />
+                ))
+              ) : (
+                <Card>
+                  <Box padding="800">
+                    <Text as="p" variant="bodyMd" alignment="center" tone="subdued">
+                      {searchQuery ? 'No products match your search.' : 'No products found in this store.'}
+                    </Text>
+                  </Box>
+                </Card>
+              )}
+            </BlockStack>
+          </Layout.Section>
+        </Layout>
+      </BlockStack>
     </Page>
   );
 };
