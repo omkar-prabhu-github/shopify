@@ -383,7 +383,7 @@ app.post('/api/policy/generate', async (req, res) => {
   const prompt = `You are a Shopify store policy analyst. Given the following store data, create a single dense paragraph summarizing ALL of the store's policies, return/refund rules, shipping terms, legal disclaimers, and compliance requirements. Include any implicit rules from product descriptions and store settings. Be thorough and specific.\n\nStore Data:\n${JSON.stringify(storeContext, null, 2)}`;
 
   try {
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     const payload = JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
@@ -395,6 +395,13 @@ app.post('/api/policy/generate', async (req, res) => {
     }, payload);
 
     const data = geminiRes.json();
+
+    if (!geminiRes.ok) {
+      const errMsg = data?.error?.message || JSON.stringify(data);
+      console.error(`Gemini API error (${geminiRes.status}):`, errMsg);
+      return res.status(geminiRes.status).json({ error: `Gemini API error: ${errMsg}` });
+    }
+
     const policyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     if (!policyText) {
@@ -410,6 +417,110 @@ app.post('/api/policy/generate', async (req, res) => {
   } catch (err) {
     console.error('Gemini policy error:', err.message);
     return res.status(500).json({ error: 'Failed to generate policy: ' + err.message });
+  }
+});
+
+// ── Full Store Audit (Gemini) ────────────────────────────────────────────────
+app.post('/api/audit/store', async (req, res) => {
+  if (!GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
+
+  const { shop, storeData } = req.body;
+  if (!shop || !storeData) return res.status(400).json({ error: 'Missing shop or storeData' });
+
+  // ── Trim data to stay under ~80k tokens ──
+  const trimmed = {
+    store: storeData.store_context || {},
+    collections: (storeData.collections || []).map(c => ({ title: c.title, description: (c.description || '').slice(0, 150), products_count: c.products_count })),
+    products: (storeData.catalog || []).slice(0, 50).map(p => ({
+      title: p.title, handle: p.handle, status: p.status,
+      description: (p.description || '').slice(0, 200),
+      vendor: p.vendor, product_type: p.product_type,
+      tags: p.tags, total_inventory: p.total_inventory,
+      variants: (p.variants || []).map(v => ({ title: v.title, price: v.price, compare_at_price: v.compare_at_price, sku: v.sku, inventory: v.inventory })),
+      images_count: (p.images || []).length,
+      has_alt_text: (p.images || []).every(img => img.altText && img.altText.length > 0),
+    })),
+    discounts: (storeData.discounts || []).map(d => ({ title: d.title, value: d.value, value_type: d.value_type, starts_at: d.starts_at, ends_at: d.ends_at })),
+    blog_count: (storeData.blog_content || []).length,
+    redirects_count: (storeData.redirects || []).length,
+  };
+
+  const storePayload = JSON.stringify(trimmed);
+  const estimatedTokens = Math.ceil(storePayload.length / 4);
+  console.log(`📊 Store audit payload: ${storePayload.length} chars (~${estimatedTokens} tokens)`);
+
+  if (estimatedTokens > 80000) {
+    console.warn('⚠️ Payload exceeds 80k token budget, truncating products');
+    trimmed.products = trimmed.products.slice(0, 25);
+  }
+
+  const systemPrompt = `You are an elite Shopify store auditor. Analyze the entire store data and produce a comprehensive audit.
+
+OUTPUT STRICTLY IN VALID JSON. NO MARKDOWN. NO CONVERSATIONAL TEXT.
+
+Required JSON schema:
+{
+  "healthScore": <number 0-100>,
+  "summary": "<1-2 sentence overview>",
+  "findings": [
+    {
+      "title": "<short title>",
+      "severity": "HIGH" | "MEDIUM" | "LOW",
+      "category": "Policy" | "SEO" | "Inventory" | "Pricing" | "Compliance" | "Content",
+      "product": "<product title or 'Store-wide'>",
+      "explanation": "<specific evidence>",
+      "suggestion": "<actionable fix>"
+    }
+  ]
+}
+
+Focus on: policy contradictions, missing SEO (alt text, descriptions), pricing errors (compare_at < price), inventory issues (0 stock on active), compliance risks, content gaps.`;
+
+  try {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const payload = JSON.stringify({
+      contents: [
+        { role: 'user', parts: [{ text: systemPrompt + '\n\nStore Data:\n' + JSON.stringify(trimmed) }] },
+      ],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+    });
+
+    const geminiRes = await httpsRequest(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+    }, payload);
+
+    const data = geminiRes.json();
+    if (!geminiRes.ok) {
+      const errMsg = data?.error?.message || JSON.stringify(data);
+      console.error(`Gemini audit error (${geminiRes.status}):`, errMsg);
+      return res.status(geminiRes.status).json({ error: `Gemini API error: ${errMsg}` });
+    }
+
+    let rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!rawText) return res.status(500).json({ error: 'Gemini returned empty audit' });
+
+    // Parse JSON from response
+    let audit;
+    try {
+      let cleaned = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        audit = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+      } else {
+        audit = JSON.parse(cleaned);
+      }
+    } catch (parseErr) {
+      console.error('Failed to parse Gemini audit:', rawText.slice(0, 500));
+      audit = { healthScore: 50, summary: 'Audit completed but response was malformed.', findings: [] };
+    }
+
+    console.log(`✅ Store audit complete: score=${audit.healthScore}, findings=${audit.findings?.length || 0}`);
+    return res.json(audit);
+  } catch (err) {
+    console.error('Store audit error:', err.message);
+    return res.status(500).json({ error: 'Store audit failed: ' + err.message });
   }
 });
 
