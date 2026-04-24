@@ -1,0 +1,75 @@
+import { useState, useEffect, useRef } from 'react';
+import { LoginView } from './components/LoginView';
+import { ExtractingView } from './components/ExtractingView';
+import { DashboardView } from './components/DashboardView';
+import { fetchShopifyData } from './lib/shopify';
+import { transformShopifyData } from './lib/transformers';
+
+type ViewState = 'login' | 'extracting' | 'dashboard' | 'error';
+
+// Detect if we're inside Shopify's embedded iframe
+const isEmbedded = window.self !== window.top;
+
+function App() {
+  const [view, setView] = useState<ViewState>(isEmbedded ? 'extracting' : 'login');
+  const [errorMessage, setErrorMessage] = useState<string>('');
+  const [masterJson, setMasterJson] = useState<any>(null);
+  const autoStarted = useRef(false);
+
+  const handleExtract = async (domain: string, token: string) => {
+    setView('extracting');
+    setErrorMessage('');
+    try {
+      // Persist in sessionStorage so we survive re-renders
+      sessionStorage.setItem('shopify_shop', domain);
+      sessionStorage.setItem('shopify_token', token);
+
+      const rawData = await fetchShopifyData(domain, token);
+      const transformedData = transformShopifyData(rawData);
+      setMasterJson(transformedData);
+      setView('dashboard');
+    } catch (error: any) {
+      console.error("Extraction failed:", error);
+      setErrorMessage(error.message || 'An unknown error occurred during extraction.');
+      // If embedded, show dashboard with empty data instead of login page
+      if (isEmbedded) {
+        setMasterJson(transformShopifyData({}));
+        setView('dashboard');
+      } else {
+        setView('error');
+      }
+    }
+  };
+
+  // Auto-extract if shop & token are available
+  useEffect(() => {
+    if (autoStarted.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const shop = params.get('shop') || sessionStorage.getItem('shopify_shop');
+    const token = params.get('token') || sessionStorage.getItem('shopify_token');
+
+    if (shop && token) {
+      autoStarted.current = true;
+      // Clean the URL so tokens aren't visible
+      window.history.replaceState({}, '', window.location.pathname);
+      handleExtract(shop, token);
+    } else if (isEmbedded) {
+      // We're inside Shopify but have no credentials yet
+      // Show a loading state — the backend root route should handle auth
+      setView('extracting');
+    }
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans">
+      {(view === 'login' || view === 'error') && !isEmbedded && (
+        <LoginView onExtract={handleExtract} error={errorMessage} />
+      )}
+      {view === 'extracting' && <ExtractingView />}
+      {view === 'dashboard' && masterJson && <DashboardView data={masterJson} />}
+    </div>
+  );
+}
+
+export default App;
