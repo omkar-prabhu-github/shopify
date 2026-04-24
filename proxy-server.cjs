@@ -500,17 +500,14 @@ Focus on: policy contradictions, missing SEO (alt text, descriptions), pricing e
     let rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     if (!rawText) return res.status(500).json({ error: 'Gemini returned empty audit' });
 
-    // Parse JSON from response
+    // Parse JSON from response — strip any markdown fences or conversational text
     let audit;
     try {
-      let cleaned = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
-      const firstBrace = cleaned.indexOf('{');
-      const lastBrace = cleaned.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace !== -1) {
-        audit = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
-      } else {
-        audit = JSON.parse(cleaned);
-      }
+      // Find the JSON object boundaries directly
+      const firstBrace = rawText.indexOf('{');
+      const lastBrace = rawText.lastIndexOf('}');
+      if (firstBrace === -1 || lastBrace === -1) throw new Error('No JSON object found');
+      audit = JSON.parse(rawText.slice(firstBrace, lastBrace + 1));
     } catch (parseErr) {
       console.error('Failed to parse Gemini audit:', rawText.slice(0, 500));
       audit = { healthScore: 50, summary: 'Audit completed but response was malformed.', findings: [] };

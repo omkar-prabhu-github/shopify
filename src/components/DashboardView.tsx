@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Page, Layout, Card, Text, Badge, Button, BlockStack, InlineStack,
-  Box, InlineGrid, Banner, Spinner, Divider, ProgressBar,
+  Box, InlineGrid, Banner, Spinner, ProgressBar, TextField,
 } from '@shopify/polaris';
 
 interface DashboardViewProps { data: any; }
@@ -491,14 +491,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data }) => {
                 <Text as="span" variant="bodySm" tone="subdued">{filteredCatalog.length} product{filteredCatalog.length !== 1 ? 's' : ''} · Per-product scan via Gemma 2B</Text>
               </InlineStack>
 
-              <input
-                type="text" placeholder="Search products…" value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: '100%', padding: '10px 16px', borderRadius: 10,
-                  border: '1px solid #e2e8f0', fontSize: 14, outline: 'none',
-                  background: '#f8fafc', fontFamily: 'inherit',
-                }}
+              <TextField
+                label="Search products"
+                labelHidden
+                placeholder="Search products…"
+                value={searchQuery}
+                onChange={setSearchQuery}
+                autoComplete="off"
               />
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
