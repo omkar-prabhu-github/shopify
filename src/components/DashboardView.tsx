@@ -24,8 +24,12 @@ interface StoreAudit {
 
 interface ProductAnalysis {
   riskLevel: string;
+  overallScore: number;
   issues: string[];
   suggestions: string[];
+  seoScore: number;
+  complianceScore: number;
+  contentScore: number;
 }
 
 /* ── Animated Health Gauge ─────────────────────────────── */
@@ -223,16 +227,42 @@ const ProductRow: React.FC<{ product: any; shop: string; policyReady: boolean }>
             padding: '10px 18px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between',
             alignItems: 'center', fontSize: 12, color: '#64748b',
           }}>
-            <span><strong>{analysis.issues?.length || 0}</strong> issue{(analysis.issues?.length || 0) !== 1 ? 's' : ''} · <strong>{analysis.suggestions?.length || 0}</strong> suggestion{(analysis.suggestions?.length || 0) !== 1 ? 's' : ''}</span>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+              <span style={{ fontSize: 20, fontWeight: 700, color: (analysis.overallScore || 50) >= 70 ? '#16a34a' : (analysis.overallScore || 50) >= 50 ? '#d97706' : '#dc2626' }}>
+                {analysis.overallScore || 50}/100
+              </span>
+              <span><strong>{analysis.issues?.length || 0}</strong> issue{(analysis.issues?.length || 0) !== 1 ? 's' : ''} · <strong>{analysis.suggestions?.length || 0}</strong> suggestion{(analysis.suggestions?.length || 0) !== 1 ? 's' : ''}</span>
+            </div>
             <span>{expanded ? '▲' : '▼'}</span>
           </div>
           {expanded && (
-            <div style={{ padding: '0 18px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ padding: '0 18px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* Score Bars */}
+              <div style={{ display: 'flex', gap: 12 }}>
+                {[
+                  { label: '🔍 SEO', score: analysis.seoScore, color: '#3b82f6' },
+                  { label: '⚖️ Compliance', score: analysis.complianceScore, color: '#8b5cf6' },
+                  { label: '📝 Content', score: analysis.contentScore, color: '#06b6d4' },
+                ].map((s, i) => (
+                  <div key={i} style={{ flex: 1, background: '#f8fafc', borderRadius: 10, padding: '8px 12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 600, marginBottom: 4 }}>
+                      <span>{s.label}</span>
+                      <span style={{ color: (s.score || 0) >= 70 ? '#16a34a' : (s.score || 0) >= 50 ? '#d97706' : '#dc2626' }}>{s.score || 0}</span>
+                    </div>
+                    <div style={{ height: 4, background: '#e2e8f0', borderRadius: 2 }}>
+                      <div style={{ height: '100%', borderRadius: 2, background: s.color, width: `${s.score || 0}%`, transition: 'width 0.5s ease' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Issues */}
               {(analysis.issues || []).map((issue, i) => (
                 <div key={`i-${i}`} style={{ background: '#fef2f2', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#991b1b', lineHeight: 1.5 }}>
                   ⚠️ {issue}
                 </div>
               ))}
+              {/* Suggestions */}
               {(analysis.suggestions || []).map((sug, i) => (
                 <div key={`s-${i}`} style={{ background: '#ecfdf5', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#065f46', lineHeight: 1.5 }}>
                   💡 {sug}
@@ -526,6 +556,55 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onReExtract 
                   </div>
                 </BlockStack>
               </Card>
+              {/* Category Breakdown */}
+              <Card>
+                <BlockStack gap="400">
+                  <Text as="h2" variant="headingMd">Issues by Category</Text>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {Object.entries(
+                      findings.reduce((acc: Record<string, number>, f) => {
+                        acc[f.category] = (acc[f.category] || 0) + 1;
+                        return acc;
+                      }, {})
+                    ).sort((a, b) => b[1] - a[1]).map(([cat, count]) => (
+                      <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span style={{ fontSize: 16, width: 24, textAlign: 'center' }}>{catIcons[cat] || '📋'}</span>
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{cat}</span>
+                        <div style={{ width: 120, height: 6, background: '#e2e8f0', borderRadius: 3 }}>
+                          <div style={{
+                            height: '100%', borderRadius: 3, background: '#4f46e5',
+                            width: `${(count / findings.length) * 100}%`, transition: 'width 0.5s',
+                          }} />
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#4f46e5', width: 24, textAlign: 'right' }}>{count}</span>
+                      </div>
+                    ))}
+                    {findings.length === 0 && (
+                      <Text as="p" variant="bodySm" tone="subdued">No findings to categorize.</Text>
+                    )}
+                  </div>
+                </BlockStack>
+              </Card>
+
+              {/* AI Architecture Info */}
+              <Card>
+                <InlineStack gap="400" align="space-between" blockAlign="center">
+                  <BlockStack gap="100">
+                    <Text as="h2" variant="headingMd">AI Models</Text>
+                    <Text as="p" variant="bodySm" tone="subdued">Hybrid architecture powering your audit</Text>
+                  </BlockStack>
+                  <InlineStack gap="200">
+                    <div style={{
+                      padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                      background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe',
+                    }}>⚡ Gemini 2.5 Flash · Store Audit</div>
+                    <div style={{
+                      padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                      background: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe',
+                    }}>🧬 Gemma 4 31B · Product Scan</div>
+                  </InlineStack>
+                </InlineStack>
+              </Card>
             </>
           )}
 
@@ -534,7 +613,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onReExtract 
             <BlockStack gap="400">
               <InlineStack align="space-between" blockAlign="center">
                 <Text as="h2" variant="headingMd">Product Catalog</Text>
-                <Text as="span" variant="bodySm" tone="subdued">{filteredCatalog.length} product{filteredCatalog.length !== 1 ? 's' : ''} · Per-product scan via Gemma 2B</Text>
+                <Text as="span" variant="bodySm" tone="subdued">{filteredCatalog.length} product{filteredCatalog.length !== 1 ? 's' : ''} · Per-product scan via Gemma 4 31B</Text>
               </InlineStack>
 
               <TextField

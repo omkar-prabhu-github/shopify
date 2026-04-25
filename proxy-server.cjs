@@ -525,9 +525,9 @@ Focus on: policy contradictions, missing SEO (alt text, descriptions), pricing e
   }
 });
 
-// ── Deep Product Analysis (Gemma 2B via HF Space) ────────────────────────────
+// ── Deep Product Analysis (Gemma 4 31B via Gemini API) ───────────────────────
 app.post('/api/audit/product', async (req, res) => {
-  if (!HF_SPACE_URL) return res.status(500).json({ error: 'HF_SPACE_URL not configured' });
+  if (!GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
 
   const { shop, product } = req.body;
   if (!shop || !product) return res.status(400).json({ error: 'Missing shop or product' });
@@ -535,100 +535,73 @@ app.post('/api/audit/product', async (req, res) => {
   const stored = policyStore.get(shop);
   if (!stored) return res.status(400).json({ error: 'Global policy not generated yet. Call /api/policy/generate first.' });
 
-  const systemPrompt = `
-You are an elite Shopify compliance auditor. 
-You will be provided with a Global Store Policy and a specific Product's data. 
-Your job is to find contradictions, legal risks, or marketing violations.
+  const prompt = `You are an elite Shopify compliance auditor.
+You will be provided with a Global Store Policy and a specific Product's data.
+Your job is to find contradictions, legal risks, missing content, SEO issues, pricing errors, or marketing violations.
 
-OUTPUT STRICTLY IN VALID JSON FORMAT. DO NOT USE MARKDOWN. DO NOT ADD CONVERSATIONAL TEXT.
+Be thorough — check descriptions, tags, pricing vs compare_at_price, inventory, images/alt text, and policy alignment.
 
-Example Output:
+OUTPUT STRICTLY IN VALID JSON. Required schema:
 {
-  "riskLevel": "HIGH",
-  "issues": [
-    "The global policy states 'No refunds', but the product description offers a '30-day money back guarantee'."
-  ],
-  "suggestions": [
-    "Remove the '30-day money back guarantee' from the product description to align with global policy."
-  ]
+  "riskLevel": "HIGH" | "MEDIUM" | "LOW" | "SAFE",
+  "overallScore": <number 0-100>,
+  "issues": ["<specific issue with evidence>"],
+  "suggestions": ["<actionable fix>"],
+  "seoScore": <number 0-100>,
+  "complianceScore": <number 0-100>,
+  "contentScore": <number 0-100>
 }
-`;
 
-  const userMessage = `Global Store Policy:\n${stored.policy}\n\nProduct Data:\n${JSON.stringify(product, null, 2)}`;
+Global Store Policy:
+${stored.policy}
+
+Product Data:
+${JSON.stringify(product, null, 2)}`;
 
   try {
+    const gemmaUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent?key=${GEMINI_API_KEY}`;
     const payload = JSON.stringify({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
-      ],
-      max_tokens: 1024,
-      temperature: 0.3,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 2048,
+        responseMimeType: "application/json"
+      },
     });
 
-    const parsed = new URL(HF_SPACE_URL);
-    const hfRes = await new Promise((resolve, reject) => {
-      const r = https.request({
-        hostname: parsed.hostname,
-        path: parsed.pathname + parsed.search,
-        port: 443, method: 'POST', family: 4, timeout: 120000,
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-        },
-      }, (response) => {
-        let data = '';
-        response.on('data', chunk => data += chunk);
-        response.on('end', () => {
-          try { resolve({ status: response.statusCode, body: JSON.parse(data) }); }
-          catch { resolve({ status: response.statusCode, body: data }); }
-        });
-      });
-      r.on('timeout', () => { r.destroy(); reject(new Error('HF Space request timed out after 120s')); });
-      r.on('error', reject);
-      r.write(payload);
-      r.end();
-    });
+    const gemmaRes = await httpsRequest(gemmaUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+    }, payload);
 
-    if (hfRes.status < 200 || hfRes.status >= 300) {
-      console.error(`HF Space error (${hfRes.status}):`, JSON.stringify(hfRes.body));
-      return res.status(hfRes.status).json({ error: 'HF Space returned an error', detail: hfRes.body });
+    const data = gemmaRes.json();
+    if (!gemmaRes.ok) {
+      const errMsg = data?.error?.message || JSON.stringify(data);
+      console.error(`Gemma 4 error (${gemmaRes.status}):`, errMsg);
+      return res.status(gemmaRes.status).json({ error: `Gemma API error: ${errMsg}` });
     }
 
-    // Extract content from OpenAI-compatible response
-    let rawContent = '';
-    if (hfRes.body?.choices?.[0]?.message?.content) {
-      rawContent = hfRes.body.choices[0].message.content;
-    } else {
-      rawContent = typeof hfRes.body === 'string' ? hfRes.body : JSON.stringify(hfRes.body);
-    }
+    let rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!rawText) return res.status(500).json({ error: 'Gemma returned empty response' });
 
-    // Parse the JSON from the model output
     let analysis;
     try {
-      // Strip markdown fences if present
-      let cleaned = rawContent.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
-      const firstBrace = cleaned.indexOf('{');
-      const lastBrace = cleaned.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace !== -1) {
-        analysis = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
-      } else {
-        analysis = JSON.parse(cleaned);
-      }
-    } catch (parseErr) {
-      console.error('Failed to parse Gemma response:', rawContent);
+      analysis = JSON.parse(rawText);
+    } catch {
+      console.error('Failed to parse Gemma 4 response:', rawText.slice(0, 500));
       analysis = {
-        riskLevel: 'MEDIUM',
-        issues: ['Model returned unparseable output. Raw: ' + rawContent.slice(0, 200)],
+        riskLevel: 'MEDIUM', overallScore: 50,
+        issues: ['Model returned unparseable output.'],
         suggestions: ['Try running the analysis again.'],
+        seoScore: 50, complianceScore: 50, contentScore: 50,
       };
     }
 
-    console.log(`🔍 Deep analysis for "${product.title}" → ${analysis.riskLevel}`);
+    console.log(`🔬 Deep analysis for "${product.title}" → ${analysis.riskLevel} (score: ${analysis.overallScore})`);
     return res.json(analysis);
   } catch (err) {
-    console.error('HF Space audit error:', err.message);
-    return res.status(500).json({ error: 'Deep analysis failed: ' + err.message });
+    console.error('Gemma 4 audit error:', err.message);
+    return res.status(500).json({ error: 'Product analysis failed: ' + err.message });
   }
 });
 
