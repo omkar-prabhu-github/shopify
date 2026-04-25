@@ -493,7 +493,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data }) => {
 
               <TextField
                 label="Search products"
-                labelHidden
+                labelAccessibilityVisibility="hidden"
                 placeholder="Search products…"
                 value={searchQuery}
                 onChange={setSearchQuery}

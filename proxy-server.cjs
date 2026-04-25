@@ -51,7 +51,11 @@ app.get('/', (req, res, next) => {
     if (data) {
       const storedToken = typeof data === 'string' ? data : data.accessToken;
       console.log(`🔄 Embedded load for ${shop} — using stored token`);
-      return res.redirect(`/?shop=${shop}&token=${storedToken}`);
+      
+      // Keep existing query params (crucial for Shopify's 'host' param)
+      const q = new URLSearchParams(req.query);
+      q.set('token', storedToken);
+      return res.redirect(`/?${q.toString()}`);
     }
     // No token — kick off OAuth
     return res.redirect(`/api/auth?shop=${shop}`);
@@ -482,7 +486,11 @@ Focus on: policy contradictions, missing SEO (alt text, descriptions), pricing e
       contents: [
         { role: 'user', parts: [{ text: systemPrompt + '\n\nStore Data:\n' + JSON.stringify(trimmed) }] },
       ],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+      generationConfig: { 
+        temperature: 0.1, 
+        maxOutputTokens: 8192,
+        responseMimeType: "application/json"
+      },
     });
 
     const geminiRes = await httpsRequest(geminiUrl, {
@@ -500,14 +508,10 @@ Focus on: policy contradictions, missing SEO (alt text, descriptions), pricing e
     let rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     if (!rawText) return res.status(500).json({ error: 'Gemini returned empty audit' });
 
-    // Parse JSON from response — strip any markdown fences or conversational text
+    // Parse JSON directly since we enforced responseMimeType
     let audit;
     try {
-      // Find the JSON object boundaries directly
-      const firstBrace = rawText.indexOf('{');
-      const lastBrace = rawText.lastIndexOf('}');
-      if (firstBrace === -1 || lastBrace === -1) throw new Error('No JSON object found');
-      audit = JSON.parse(rawText.slice(firstBrace, lastBrace + 1));
+      audit = JSON.parse(rawText);
     } catch (parseErr) {
       console.error('Failed to parse Gemini audit:', rawText.slice(0, 500));
       audit = { healthScore: 50, summary: 'Audit completed but response was malformed.', findings: [] };
@@ -698,8 +702,10 @@ app.get('/api/auth/callback', async (req, res) => {
     });
     console.log(`🔑 Token & Refresh Token obtained for ${shop}`);
 
-    // Redirect to the app inside Shopify admin
-    return res.redirect(`https://${shop}/admin/apps/${SHOPIFY_CLIENT_ID}`);
+    // Redirect to the app root (which will inject the token and load the Vite app)
+    // We pass along the host parameter which is required by Shopify App Bridge
+    const host = req.query.host;
+    return res.redirect(`/?shop=${shop}${host ? `&host=${host}` : ''}`);
 
   } catch (err) {
     console.error('💥 OAuth callback error:', err);
