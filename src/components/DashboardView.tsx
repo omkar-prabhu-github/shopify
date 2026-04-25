@@ -367,20 +367,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onReExtract 
         title={ctx?.name || 'Store Dashboard'}
         subtitle={cachedAudit ? 'AI-Powered Store Health Audit · Using cached results' : 'AI-Powered Store Health Audit'}
         primaryAction={{ content: '📥 Export Data', onAction: handleDownload }}
-        secondaryActions={[
-          {
-            content: '🔄 Re-extract & Analyze',
-            onAction: onReExtract || (() => {
-              sessionStorage.removeItem(AUDIT_CACHE_KEY);
-              sessionStorage.removeItem('agentlens_store_data');
-              setAudit(null);
-              setPolicyReady(false);
-              didAutoRun.current = false;
-              runFullAudit();
-            }),
-            loading: policyLoading || auditLoading,
-          },
-        ]}
       >
         <BlockStack gap="500">
 
@@ -402,6 +388,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onReExtract 
               </Card>
             ))}
           </InlineGrid>
+
+          {/* ── Re-extract Button ──────────────────────── */}
+          {cachedAudit && !auditLoading && !policyLoading && (
+            <Banner tone="info" onDismiss={undefined}>
+              <InlineStack align="space-between" blockAlign="center" gap="400">
+                <Text as="p" variant="bodyMd">
+                  Showing cached results. Click to re-extract fresh data from your store and run a new AI analysis.
+                </Text>
+                <Button
+                  onClick={() => {
+                    if (onReExtract) {
+                      onReExtract();
+                    } else {
+                      sessionStorage.removeItem(AUDIT_CACHE_KEY);
+                      sessionStorage.removeItem('agentlens_store_data');
+                      setAudit(null);
+                      setPolicyReady(false);
+                      didAutoRun.current = false;
+                      runFullAudit();
+                    }
+                  }}
+                  variant="primary"
+                >
+                  🔄 Re-extract &amp; Analyze
+                </Button>
+              </InlineStack>
+            </Banner>
+          )}
 
           {/* ── Audit Loading State ─────────────────────── */}
           {(policyLoading || auditLoading) && (
