@@ -4,7 +4,7 @@ import {
   Box, InlineGrid, Banner, Spinner, ProgressBar, TextField,
 } from '@shopify/polaris';
 
-interface DashboardViewProps { data: any; }
+interface DashboardViewProps { data: any; onReExtract?: () => void; }
 
 /* ── Types ─────────────────────────────────────────────── */
 interface Finding {
@@ -249,7 +249,7 @@ const ProductRow: React.FC<{ product: any; shop: string; policyReady: boolean }>
 /* ═══════════════════════════════════════════════════════════
    ██  MAIN DASHBOARD
    ═══════════════════════════════════════════════════════════ */
-export const DashboardView: React.FC<DashboardViewProps> = ({ data }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ data, onReExtract }) => {
   const ctx = data?.store_context || {};
   const catalog = data?.catalog || [];
   const collections = data?.collections || [];
@@ -258,51 +258,69 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data }) => {
   const totalInv = catalog.reduce((s: number, p: any) => s + (p.total_inventory || 0), 0);
   const shop = sessionStorage.getItem('shopify_shop') || ctx?.domain || '';
 
-  const [audit, setAudit] = useState<StoreAudit | null>(null);
+  const AUDIT_CACHE_KEY = 'agentlens_audit';
+
+  // Try restoring cached audit on initial render
+  const getCachedAudit = (): StoreAudit | null => {
+    try {
+      const raw = sessionStorage.getItem(AUDIT_CACHE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  };
+
+  const cachedAudit = getCachedAudit();
+
+  const [audit, setAudit] = useState<StoreAudit | null>(cachedAudit);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState('');
-  const [policyReady, setPolicyReady] = useState(false);
+  const [policyReady, setPolicyReady] = useState(!!cachedAudit); // if we have cached audit, policy was already generated
   const [policyLoading, setPolicyLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [severityFilter, setSeverityFilter] = useState<string>('ALL');
   const didAutoRun = useRef(false);
 
-  // Auto-run: generate policy → run store audit on mount
-  useEffect(() => {
-    if (didAutoRun.current || !shop) return;
-    didAutoRun.current = true;
-    (async () => {
-      // Step 1: Generate policy
-      setPolicyLoading(true);
-      try {
-        const pRes = await fetch('http://localhost:3000/api/policy/generate', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ shop, storeContext: ctx }),
-        });
-        if (!pRes.ok) { const e = await pRes.json().catch(() => ({})); throw new Error(e.error || 'Policy failed'); }
-        setPolicyReady(true);
-      } catch (e: any) {
-        setAuditError('Policy generation failed: ' + e.message);
-        setPolicyLoading(false);
-        return;
-      }
+  const runFullAudit = async () => {
+    // Step 1: Generate policy
+    setPolicyLoading(true);
+    setAuditError('');
+    try {
+      const pRes = await fetch('http://localhost:3000/api/policy/generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shop, storeContext: ctx }),
+      });
+      if (!pRes.ok) { const e = await pRes.json().catch(() => ({})); throw new Error(e.error || 'Policy failed'); }
+      setPolicyReady(true);
+    } catch (e: any) {
+      setAuditError('Policy generation failed: ' + e.message);
       setPolicyLoading(false);
+      return;
+    }
+    setPolicyLoading(false);
 
-      // Step 2: Run store audit
-      setAuditLoading(true);
-      try {
-        const aRes = await fetch('http://localhost:3000/api/audit/store', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ shop, storeData: data }),
-        });
-        if (!aRes.ok) { const e = await aRes.json().catch(() => ({})); throw new Error(e.error || 'Audit failed'); }
-        const result = await aRes.json();
-        setAudit(result);
-      } catch (e: any) {
-        setAuditError('Store audit failed: ' + e.message);
-      }
-      setAuditLoading(false);
-    })();
+    // Step 2: Run store audit
+    setAuditLoading(true);
+    try {
+      const aRes = await fetch('http://localhost:3000/api/audit/store', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shop, storeData: data }),
+      });
+      if (!aRes.ok) { const e = await aRes.json().catch(() => ({})); throw new Error(e.error || 'Audit failed'); }
+      const result = await aRes.json();
+      setAudit(result);
+      // Cache the audit results
+      try { sessionStorage.setItem(AUDIT_CACHE_KEY, JSON.stringify(result)); } catch {}
+    } catch (e: any) {
+      setAuditError('Store audit failed: ' + e.message);
+    }
+    setAuditLoading(false);
+  };
+
+  // Auto-run only if no cached audit
+  useEffect(() => {
+    if (didAutoRun.current || !shop || cachedAudit) return;
+    didAutoRun.current = true;
+    runFullAudit();
   }, [shop]);
 
   const findings = audit?.findings || [];
@@ -347,8 +365,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data }) => {
 
       <Page
         title={ctx?.name || 'Store Dashboard'}
-        subtitle="AI-Powered Store Health Audit"
+        subtitle={cachedAudit ? 'AI-Powered Store Health Audit · Using cached results' : 'AI-Powered Store Health Audit'}
         primaryAction={{ content: '📥 Export Data', onAction: handleDownload }}
+        secondaryActions={[
+          {
+            content: '🔄 Re-extract & Analyze',
+            onAction: onReExtract || (() => {
+              sessionStorage.removeItem(AUDIT_CACHE_KEY);
+              sessionStorage.removeItem('agentlens_store_data');
+              setAudit(null);
+              setPolicyReady(false);
+              didAutoRun.current = false;
+              runFullAudit();
+            }),
+            loading: policyLoading || auditLoading,
+          },
+        ]}
       >
         <BlockStack gap="500">
 

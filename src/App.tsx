@@ -7,6 +7,8 @@ import { transformShopifyData } from './lib/transformers';
 
 type ViewState = 'login' | 'extracting' | 'dashboard' | 'error';
 
+const CACHE_KEY = 'agentlens_store_data';
+
 // Detect if we're inside Shopify's embedded iframe
 const isEmbedded = window.self !== window.top;
 
@@ -26,6 +28,10 @@ function App() {
 
       const rawData = await fetchShopifyData(domain, token);
       const transformedData = transformShopifyData(rawData);
+
+      // Cache the extracted data
+      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(transformedData)); } catch {}
+
       setMasterJson(transformedData);
       setView('dashboard');
     } catch (error: any) {
@@ -41,6 +47,19 @@ function App() {
     }
   };
 
+  // Called from DashboardView when user clicks "Re-extract & Analyze"
+  const handleReExtract = () => {
+    // Clear all cached data
+    sessionStorage.removeItem(CACHE_KEY);
+    sessionStorage.removeItem('agentlens_audit');
+
+    const shop = sessionStorage.getItem('shopify_shop');
+    const token = sessionStorage.getItem('shopify_token');
+    if (shop && token) {
+      handleExtract(shop, token);
+    }
+  };
+
   // Auto-extract if shop & token are available
   useEffect(() => {
     if (autoStarted.current) return;
@@ -53,6 +72,22 @@ function App() {
       autoStarted.current = true;
       // Clean the URL so tokens aren't visible
       window.history.replaceState({}, '', window.location.pathname);
+
+      // Check for cached data first
+      try {
+        const cached = sessionStorage.getItem(CACHE_KEY);
+        if (cached) {
+          const parsedData = JSON.parse(cached);
+          console.log('📦 Using cached store data');
+          sessionStorage.setItem('shopify_shop', shop);
+          sessionStorage.setItem('shopify_token', token);
+          setMasterJson(parsedData);
+          setView('dashboard');
+          return;
+        }
+      } catch {}
+
+      // No cache — do fresh extraction
       handleExtract(shop, token);
     } else if (isEmbedded) {
       // We're inside Shopify but have no credentials yet
@@ -67,7 +102,9 @@ function App() {
         <LoginView onExtract={handleExtract} error={errorMessage} />
       )}
       {view === 'extracting' && <ExtractingView />}
-      {view === 'dashboard' && masterJson && <DashboardView data={masterJson} />}
+      {view === 'dashboard' && masterJson && (
+        <DashboardView data={masterJson} onReExtract={handleReExtract} />
+      )}
     </div>
   );
 }
