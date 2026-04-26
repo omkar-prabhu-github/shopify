@@ -1,25 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Page, Layout, Card, Text, Badge, Button, BlockStack, InlineStack,
-  Box, InlineGrid, Banner, Spinner, ProgressBar, TextField,
+  Box, InlineGrid, Banner, Spinner, TextField,
 } from '@shopify/polaris';
 
 interface DashboardViewProps { data: any; onReExtract?: () => void; }
 
 /* ── Types ─────────────────────────────────────────────── */
-interface Finding {
-  title: string;
-  severity: 'HIGH' | 'MEDIUM' | 'LOW';
-  category: string;
-  product: string;
-  explanation: string;
-  suggestion: string;
-}
+interface LayerScore { score: number; details: string; }
+interface ActionItem { title: string; principle: string; what: string; why: string; how: string; impact: string; }
+interface PerfProduct { title: string; score: number; reason: string; }
 
-interface StoreAudit {
-  healthScore: number;
-  summary: string;
-  findings: Finding[];
+interface GeoAudit {
+  executiveSummary: { geoHealthScore: number; grade: string; topThreat: string; topOpportunity: string; };
+  layerScores: { schema: LayerScore; contentQuality: LayerScore; trust: LayerScore; extractability: LayerScore; journeyPolicy: LayerScore; crossEngine: LayerScore; };
+  productAnalysis: { topPerformers: PerfProduct[]; bottomPerformers: PerfProduct[]; };
+  actionPlan: { critical: ActionItem[]; highPriority: ActionItem[]; strategic: ActionItem[]; };
+  projectedImpact: { estimatedVisibilityIncrease: string; timeline: string; };
 }
 
 interface ProductAnalysis {
@@ -75,69 +72,46 @@ const HealthGauge: React.FC<{ score: number }> = ({ score }) => {
   );
 };
 
-/* ── Severity Badge Colors ─────────────────────────────── */
-const sevStyle: Record<string, { bg: string; fg: string; border: string }> = {
-  HIGH:   { bg: '#fef2f2', fg: '#dc2626', border: '#fecaca' },
-  MEDIUM: { bg: '#fffbeb', fg: '#d97706', border: '#fde68a' },
-  LOW:    { bg: '#eff6ff', fg: '#2563eb', border: '#bfdbfe' },
-};
-const catIcons: Record<string, string> = {
-  Policy: '📜', SEO: '🔍', Inventory: '📦', Pricing: '💰', Compliance: '⚖️', Content: '📝',
-};
-
-/* ── Finding Card ──────────────────────────────────────── */
-const FindingCard: React.FC<{ f: Finding; i: number }> = ({ f, i }) => {
+/* ── Action Item Card (for GEO Action Plan) ───────────── */
+const ActionItemCard: React.FC<{ item: ActionItem; bg: string; border: string; accent: string }> = ({ item, bg, border, accent }) => {
   const [open, setOpen] = useState(false);
-  const s = sevStyle[f.severity] || sevStyle.LOW;
   return (
     <div style={{
-      background: '#fff', borderRadius: 14, border: `1px solid ${s.border}`,
-      borderLeft: `4px solid ${s.fg}`, overflow: 'hidden',
-      animation: `fadeSlideIn 0.4s ${i * 60}ms both`,
+      background: '#fff', borderRadius: 14, border: `1px solid ${border}`,
+      borderLeft: `4px solid ${accent}`, overflow: 'hidden',
+      animation: 'fadeSlideIn 0.4s both',
     }}>
       <div style={{ padding: '14px 18px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-          <span style={{ fontSize: 18, lineHeight: 1 }}>{catIcons[f.category] || '🔎'}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 4 }}>
-              <span style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{f.title}</span>
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                background: s.bg, color: s.fg, textTransform: 'uppercase', letterSpacing: 0.5,
-              }}>{f.severity}</span>
-              <span style={{
-                fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20,
-                background: '#f1f5f9', color: '#475569',
-              }}>{f.category}</span>
-              {f.product !== 'Store-wide' && (
-                <span style={{ fontSize: 10, color: '#94a3b8' }}>• {f.product}</span>
-              )}
+              <span style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{item.title}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: bg, color: accent, textTransform: 'uppercase' as const }}>{item.impact}</span>
+              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: '#f1f5f9', color: '#475569' }}>Principle {item.principle}</span>
             </div>
-            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.5, margin: 0 }}>{f.explanation}</p>
-            {f.suggestion && (
-              <button onClick={() => setOpen(!open)} style={{
-                marginTop: 8, fontSize: 12, fontWeight: 600, color: '#2563eb',
-                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-              }}>
-                {open ? '▲ Hide fix' : '▼ View fix'}
-              </button>
-            )}
+            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.5, margin: 0 }}>{item.what}</p>
+            <button onClick={() => setOpen(!open)} style={{
+              marginTop: 8, fontSize: 12, fontWeight: 600, color: '#2563eb',
+              background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            }}>
+              {open ? '▲ Hide details' : '▼ View details'}
+            </button>
           </div>
         </div>
       </div>
-      {open && f.suggestion && (
-        <div style={{ padding: '0 18px 14px 46px' }}>
-          <div style={{
-            background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 10,
-            padding: '10px 14px', fontSize: 13, color: '#065f46', lineHeight: 1.5,
-          }}>
-            <strong>Fix:</strong> {f.suggestion}
+      {open && (
+        <div style={{ padding: '0 18px 14px' }}>
+          <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 14px', fontSize: 13, lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div><strong>Why:</strong> {item.why}</div>
+            <div><strong>How:</strong> {item.how}</div>
           </div>
         </div>
       )}
     </div>
   );
 };
+
+/* ── Finding Card ──────────────────────────────────────── */
 
 /* ── Product Row with HF Analysis ──────────────────────── */
 const ProductRow: React.FC<{ product: any; shop: string; policyReady: boolean }> = ({ product, shop, policyReady }) => {
@@ -301,35 +275,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onReExtract 
 
   const cachedAudit = getCachedAudit();
 
-  const [audit, setAudit] = useState<StoreAudit | null>(cachedAudit);
+  const [audit, setAudit] = useState<GeoAudit | null>(cachedAudit);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState('');
-  const [policyReady, setPolicyReady] = useState(!!cachedAudit); // if we have cached audit, policy was already generated
+  const [policyReady, setPolicyReady] = useState(!!cachedAudit); // true if we have audit, unlocks deep scans
   const [policyLoading, setPolicyLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [severityFilter, setSeverityFilter] = useState<string>('ALL');
   const didAutoRun = useRef(false);
 
   const runFullAudit = async () => {
-    // Step 1: Generate policy
-    setPolicyLoading(true);
     setAuditError('');
-    try {
-      const pRes = await fetch('http://localhost:3000/api/policy/generate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shop, storeContext: ctx }),
-      });
-      if (!pRes.ok) { const e = await pRes.json().catch(() => ({})); throw new Error(e.error || 'Policy failed'); }
-      setPolicyReady(true);
-    } catch (e: any) {
-      setAuditError('Policy generation failed: ' + e.message);
-      setPolicyLoading(false);
-      return;
-    }
-    setPolicyLoading(false);
-
-    // Step 2: Run store audit
     setAuditLoading(true);
+    setPolicyLoading(true); // Re-using this to show "Generating context..." if needed, or just remove it
     try {
       const aRes = await fetch('http://localhost:3000/api/audit/store', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -338,12 +296,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onReExtract 
       if (!aRes.ok) { const e = await aRes.json().catch(() => ({})); throw new Error(e.error || 'Audit failed'); }
       const result = await aRes.json();
       setAudit(result);
+      setPolicyReady(true);
       // Cache the audit results
       try { sessionStorage.setItem(AUDIT_CACHE_KEY, JSON.stringify(result)); } catch {}
     } catch (e: any) {
       setAuditError('Store audit failed: ' + e.message);
     }
     setAuditLoading(false);
+    setPolicyLoading(false);
   };
 
   // Auto-run only if no cached audit
@@ -353,13 +313,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onReExtract 
     runFullAudit();
   }, [shop]);
 
-  const findings = audit?.findings || [];
-  const highC = findings.filter(f => f.severity === 'HIGH').length;
-  const medC = findings.filter(f => f.severity === 'MEDIUM').length;
-  const lowC = findings.filter(f => f.severity === 'LOW').length;
-
-  const filteredFindings = severityFilter === 'ALL'
-    ? findings : findings.filter(f => f.severity === severityFilter);
 
   const filteredCatalog = catalog.filter((p: any) => {
     if (!searchQuery) return true;
@@ -472,119 +425,144 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onReExtract 
             </Banner>
           )}
 
-          {/* ── Audit Results ───────────────────────────── */}
+          {/* ── GEO Audit Results ─────────────────────── */}
           {audit && (
             <>
-              {/* Health Score + Summary Row */}
+              {/* Executive Summary */}
               <Layout>
                 <Layout.Section variant="oneHalf">
                   <Card>
                     <BlockStack gap="400" align="center" inlineAlign="center">
-                      <Text as="h2" variant="headingMd">Store Health Score</Text>
-                      <HealthGauge score={audit.healthScore} />
-                      <Badge tone={audit.healthScore >= 80 ? 'success' : audit.healthScore >= 60 ? 'warning' : 'critical'}>
-                        {audit.healthScore >= 80 ? 'Excellent' : audit.healthScore >= 60 ? 'Fair' : 'Needs Attention'}
+                      <Text as="h2" variant="headingMd">GEO Health Score</Text>
+                      <HealthGauge score={audit.executiveSummary?.geoHealthScore || 0} />
+                      <Badge tone={audit.executiveSummary?.geoHealthScore >= 80 ? 'success' : audit.executiveSummary?.geoHealthScore >= 60 ? 'warning' : 'critical'}>
+                        Grade: {audit.executiveSummary?.grade || 'N/A'}
                       </Badge>
-                      <Text as="p" variant="bodyMd" tone="subdued" alignment="center">{audit.summary}</Text>
                     </BlockStack>
                   </Card>
                 </Layout.Section>
-
                 <Layout.Section variant="oneHalf">
                   <Card>
                     <BlockStack gap="400">
-                      <Text as="h2" variant="headingMd">Risk Breakdown</Text>
-                      <BlockStack gap="300">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#dc2626', flexShrink: 0 }} />
-                          <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>High Severity</span>
-                          <span style={{ fontSize: 22, fontWeight: 700, color: '#dc2626' }}>{highC}</span>
-                        </div>
-                        <ProgressBar progress={findings.length > 0 ? (highC / findings.length) * 100 : 0} tone="critical" size="small" />
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#d97706', flexShrink: 0 }} />
-                          <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>Medium Severity</span>
-                          <span style={{ fontSize: 22, fontWeight: 700, color: '#d97706' }}>{medC}</span>
-                        </div>
-                        <ProgressBar progress={findings.length > 0 ? (medC / findings.length) * 100 : 0} tone="highlight" size="small" />
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#2563eb', flexShrink: 0 }} />
-                          <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>Low Severity</span>
-                          <span style={{ fontSize: 22, fontWeight: 700, color: '#2563eb' }}>{lowC}</span>
-                        </div>
-                        <ProgressBar progress={findings.length > 0 ? (lowC / findings.length) * 100 : 0} tone="info" size="small" />
-                      </BlockStack>
+                      <Text as="h2" variant="headingMd">Executive Summary</Text>
+                      <div style={{ background: '#fef2f2', borderRadius: 10, padding: '12px 16px', borderLeft: '4px solid #dc2626' }}>
+                        <Text as="p" variant="bodySm" tone="subdued">🚨 Top Threat</Text>
+                        <Text as="p" variant="bodyMd">{audit.executiveSummary?.topThreat || 'N/A'}</Text>
+                      </div>
+                      <div style={{ background: '#ecfdf5', borderRadius: 10, padding: '12px 16px', borderLeft: '4px solid #16a34a' }}>
+                        <Text as="p" variant="bodySm" tone="subdued">🚀 Top Opportunity</Text>
+                        <Text as="p" variant="bodyMd">{audit.executiveSummary?.topOpportunity || 'N/A'}</Text>
+                      </div>
                     </BlockStack>
                   </Card>
                 </Layout.Section>
               </Layout>
 
-              {/* Findings List */}
+              {/* Layer Scores */}
               <Card>
                 <BlockStack gap="400">
-                  <InlineStack align="space-between" blockAlign="center">
-                    <Text as="h2" variant="headingMd">
-                      Findings ({filteredFindings.length})
-                    </Text>
-                    <InlineStack gap="200">
-                      {(['ALL', 'HIGH', 'MEDIUM', 'LOW'] as const).map(s => (
-                        <button key={s} onClick={() => setSeverityFilter(s)} style={{
-                          padding: '4px 12px', borderRadius: 20, border: '1px solid',
-                          borderColor: severityFilter === s ? '#4f46e5' : '#e2e8f0',
-                          background: severityFilter === s ? '#4f46e5' : '#fff',
-                          color: severityFilter === s ? '#fff' : '#64748b',
-                          fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                        }}>
-                          {s === 'ALL' ? `All (${findings.length})` : `${s} (${findings.filter(f => f.severity === s).length})`}
-                        </button>
-                      ))}
-                    </InlineStack>
-                  </InlineStack>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {filteredFindings.length > 0 ? (
-                      filteredFindings.map((f, i) => <FindingCard key={i} f={f} i={i} />)
-                    ) : (
-                      <Box padding="600">
-                        <Text as="p" variant="bodyMd" alignment="center" tone="subdued">
-                          {findings.length === 0 ? '🛡️ No issues found — your store looks healthy!' : 'No findings match this filter.'}
-                        </Text>
-                      </Box>
-                    )}
-                  </div>
-                </BlockStack>
-              </Card>
-              {/* Category Breakdown */}
-              <Card>
-                <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">Issues by Category</Text>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {Object.entries(
-                      findings.reduce((acc: Record<string, number>, f) => {
-                        acc[f.category] = (acc[f.category] || 0) + 1;
-                        return acc;
-                      }, {})
-                    ).sort((a, b) => b[1] - a[1]).map(([cat, count]) => (
-                      <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <span style={{ fontSize: 16, width: 24, textAlign: 'center' }}>{catIcons[cat] || '📋'}</span>
-                        <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{cat}</span>
-                        <div style={{ width: 120, height: 6, background: '#e2e8f0', borderRadius: 3 }}>
-                          <div style={{
-                            height: '100%', borderRadius: 3, background: '#4f46e5',
-                            width: `${(count / findings.length) * 100}%`, transition: 'width 0.5s',
-                          }} />
+                  <Text as="h2" variant="headingMd">GEO Layer Scores</Text>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {audit.layerScores && [
+                      { key: 'schema', label: '📐 Schema', max: 20, color: '#3b82f6' },
+                      { key: 'contentQuality', label: '📝 Content Quality', max: 20, color: '#8b5cf6' },
+                      { key: 'trust', label: '🛡️ Trust Signals', max: 15, color: '#06b6d4' },
+                      { key: 'extractability', label: '🔍 Extractability', max: 15, color: '#f59e0b' },
+                      { key: 'journeyPolicy', label: '🛒 Journey & Policy', max: 20, color: '#10b981' },
+                      { key: 'crossEngine', label: '⚙️ Cross-Engine', max: 10, color: '#ef4444' },
+                    ].map(layer => {
+                      const ls = (audit.layerScores as any)[layer.key] as LayerScore | undefined;
+                      const score = ls?.score || 0;
+                      const pct = (score / layer.max) * 100;
+                      return (
+                        <div key={layer.key}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                            <span>{layer.label}</span>
+                            <span style={{ color: pct >= 70 ? '#16a34a' : pct >= 40 ? '#d97706' : '#dc2626' }}>{score}/{layer.max}</span>
+                          </div>
+                          <div style={{ height: 8, background: '#e2e8f0', borderRadius: 4 }}>
+                            <div style={{ height: '100%', borderRadius: 4, background: layer.color, width: `${pct}%`, transition: 'width 0.6s ease' }} />
+                          </div>
+                          {ls?.details && <Text as="p" variant="bodySm" tone="subdued">{ls.details}</Text>}
                         </div>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#4f46e5', width: 24, textAlign: 'right' }}>{count}</span>
-                      </div>
-                    ))}
-                    {findings.length === 0 && (
-                      <Text as="p" variant="bodySm" tone="subdued">No findings to categorize.</Text>
-                    )}
+                      );
+                    })}
                   </div>
                 </BlockStack>
               </Card>
+
+              {/* Product Analysis — Top & Bottom Performers */}
+              <Layout>
+                <Layout.Section variant="oneHalf">
+                  <Card>
+                    <BlockStack gap="300">
+                      <Text as="h2" variant="headingMd">🏆 Top Performers</Text>
+                      {(audit.productAnalysis?.topPerformers || []).map((p, i) => (
+                        <div key={i} style={{ background: '#f0fdf4', borderRadius: 10, padding: '10px 14px', borderLeft: '3px solid #16a34a' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: 13 }}>
+                            <span>{p.title}</span>
+                            <span style={{ color: '#16a34a' }}>{p.score}/100</span>
+                          </div>
+                          <Text as="p" variant="bodySm" tone="subdued">{p.reason}</Text>
+                        </div>
+                      ))}
+                      {(!audit.productAnalysis?.topPerformers?.length) && <Text as="p" variant="bodySm" tone="subdued">No data available.</Text>}
+                    </BlockStack>
+                  </Card>
+                </Layout.Section>
+                <Layout.Section variant="oneHalf">
+                  <Card>
+                    <BlockStack gap="300">
+                      <Text as="h2" variant="headingMd">⚠️ Bottom Performers</Text>
+                      {(audit.productAnalysis?.bottomPerformers || []).map((p, i) => (
+                        <div key={i} style={{ background: '#fef2f2', borderRadius: 10, padding: '10px 14px', borderLeft: '3px solid #dc2626' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: 13 }}>
+                            <span>{p.title}</span>
+                            <span style={{ color: '#dc2626' }}>{p.score}/100</span>
+                          </div>
+                          <Text as="p" variant="bodySm" tone="subdued">{p.reason}</Text>
+                        </div>
+                      ))}
+                      {(!audit.productAnalysis?.bottomPerformers?.length) && <Text as="p" variant="bodySm" tone="subdued">No data available.</Text>}
+                    </BlockStack>
+                  </Card>
+                </Layout.Section>
+              </Layout>
+
+              {/* Action Plan */}
+              <Card>
+                <BlockStack gap="400">
+                  <Text as="h2" variant="headingMd">🎯 Prioritized Action Plan</Text>
+                  {[
+                    { tier: '🔴 Critical — This Week', items: audit.actionPlan?.critical || [], bg: '#fef2f2', border: '#fecaca', accent: '#dc2626' },
+                    { tier: '🟡 High Priority — This Month', items: audit.actionPlan?.highPriority || [], bg: '#fffbeb', border: '#fde68a', accent: '#d97706' },
+                    { tier: '🟢 Strategic — This Quarter', items: audit.actionPlan?.strategic || [], bg: '#f0fdf4', border: '#bbf7d0', accent: '#16a34a' },
+                  ].map((section, si) => (
+                    <div key={si}>
+                      <Text as="h3" variant="headingSm">{section.tier}</Text>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+                        {section.items.map((item, ii) => (
+                          <ActionItemCard key={ii} item={item} bg={section.bg} border={section.border} accent={section.accent} />
+                        ))}
+                        {section.items.length === 0 && <Text as="p" variant="bodySm" tone="subdued">No actions in this tier.</Text>}
+                      </div>
+                    </div>
+                  ))}
+                </BlockStack>
+              </Card>
+
+              {/* Projected Impact */}
+              {audit.projectedImpact && (
+                <Card>
+                  <InlineStack gap="400" align="space-between" blockAlign="center">
+                    <BlockStack gap="100">
+                      <Text as="h2" variant="headingMd">📈 Projected Impact</Text>
+                      <Text as="p" variant="bodyMd">Estimated visibility increase: <strong>{audit.projectedImpact.estimatedVisibilityIncrease}</strong></Text>
+                      <Text as="p" variant="bodySm" tone="subdued">Timeline: {audit.projectedImpact.timeline}</Text>
+                    </BlockStack>
+                  </InlineStack>
+                </Card>
+              )}
 
               {/* AI Architecture Info */}
               <Card>
@@ -594,14 +572,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ data, onReExtract 
                     <Text as="p" variant="bodySm" tone="subdued">Hybrid architecture powering your audit</Text>
                   </BlockStack>
                   <InlineStack gap="200">
-                    <div style={{
-                      padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                      background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe',
-                    }}>⚡ Gemini 2.5 Flash · Store Audit</div>
-                    <div style={{
-                      padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600,
-                      background: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe',
-                    }}>🧬 Gemma 4 31B · Product Scan</div>
+                    <div style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>⚡ Gemini 2.5 Flash · GEO Audit</div>
+                    <div style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, background: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe' }}>🧬 Gemma 4 31B · Product Scan</div>
                   </InlineStack>
                 </InlineStack>
               </Card>

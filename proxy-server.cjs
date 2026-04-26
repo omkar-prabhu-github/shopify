@@ -374,70 +374,23 @@ app.get('/api/shopify/discounts', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ██  AI ROUTES — GEMINI POLICY + GEMMA DEEP ANALYSIS
+// ██  AI ROUTES — GEO ANALYST + GEMMA DEEP ANALYSIS
 // ══════════════════════════════════════════════════════════════════════════════
 
-// ── Generate Global Policy (Gemini) — stored server-side, NEVER sent to frontend ──
-app.post('/api/policy/generate', async (req, res) => {
-  if (!GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
-
-  const { shop, storeContext } = req.body;
-  if (!shop || !storeContext) return res.status(400).json({ error: 'Missing shop or storeContext' });
-
-  const prompt = `You are a Shopify store policy analyst. Given the following store data, create a single dense paragraph summarizing ALL of the store's policies, return/refund rules, shipping terms, legal disclaimers, and compliance requirements. Include any implicit rules from product descriptions and store settings. Be thorough and specific.\n\nStore Data:\n${JSON.stringify(storeContext, null, 2)}`;
-
-  try {
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-    const payload = JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
-    });
-
-    const geminiRes = await httpsRequest(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-    }, payload);
-
-    const data = geminiRes.json();
-
-    if (!geminiRes.ok) {
-      const errMsg = data?.error?.message || JSON.stringify(data);
-      console.error(`Gemini API error (${geminiRes.status}):`, errMsg);
-      return res.status(geminiRes.status).json({ error: `Gemini API error: ${errMsg}` });
-    }
-
-    const policyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-    if (!policyText) {
-      console.error('Gemini returned empty policy:', JSON.stringify(data));
-      return res.status(500).json({ error: 'Gemini returned empty response' });
-    }
-
-    policyStore.set(shop, { policy: policyText, generatedAt: Date.now() });
-    console.log(`🧠 Global policy generated for ${shop} (${policyText.length} chars)`);
-
-    // CRITICAL: Never return the policy text to the frontend
-    return res.json({ success: true });
-  } catch (err) {
-    console.error('Gemini policy error:', err.message);
-    return res.status(500).json({ error: 'Failed to generate policy: ' + err.message });
-  }
-});
-
-// ── Full Store Audit (Gemini) ────────────────────────────────────────────────
+// ── Full Store GEO Audit (Gemini 2.5 Flash) ──────────────────────────────────
 app.post('/api/audit/store', async (req, res) => {
   if (!GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
 
   const { shop, storeData } = req.body;
   if (!shop || !storeData) return res.status(400).json({ error: 'Missing shop or storeData' });
 
-  // ── Trim data to stay under ~80k tokens ──
+  // ── Prepare data — keep full detail, budget = 250k tokens ──
   const trimmed = {
     store: storeData.store_context || {},
-    collections: (storeData.collections || []).map(c => ({ title: c.title, description: (c.description || '').slice(0, 150), products_count: c.products_count })),
+    collections: (storeData.collections || []).map(c => ({ title: c.title, description: (c.description || '').slice(0, 300), products_count: c.products_count })),
     products: (storeData.catalog || []).slice(0, 50).map(p => ({
       title: p.title, handle: p.handle, status: p.status,
-      description: (p.description || '').slice(0, 200),
+      description: (p.description || '').slice(0, 500),
       vendor: p.vendor, product_type: p.product_type,
       tags: p.tags, total_inventory: p.total_inventory,
       variants: (p.variants || []).map(v => ({ title: v.title, price: v.price, compare_at_price: v.compare_at_price, sku: v.sku, inventory: v.inventory })),
@@ -451,34 +404,92 @@ app.post('/api/audit/store', async (req, res) => {
 
   const storePayload = JSON.stringify(trimmed);
   const estimatedTokens = Math.ceil(storePayload.length / 4);
-  console.log(`📊 Store audit payload: ${storePayload.length} chars (~${estimatedTokens} tokens)`);
+  console.log(`📊 GEO audit payload: ${storePayload.length} chars (~${estimatedTokens} tokens)`);
 
-  if (estimatedTokens > 80000) {
-    console.warn('⚠️ Payload exceeds 80k token budget, truncating products');
-    trimmed.products = trimmed.products.slice(0, 25);
+  if (estimatedTokens > 200000) {
+    console.warn('⚠️ Payload exceeds 200k tokens, truncating products to 30');
+    trimmed.products = trimmed.products.slice(0, 30);
   }
 
-  const systemPrompt = `You are an elite Shopify store auditor. Analyze the entire store data and produce a comprehensive audit.
+  const systemPrompt = `# SYSTEM ROLE & TASK
+You are an elite Generative Engine Optimization (GEO) Analyst specializing in ecommerce. Your tone is authoritative, data-backed, and executive.
 
-OUTPUT STRICTLY IN VALID JSON. NO MARKDOWN. NO CONVERSATIONAL TEXT.
+Your task is to analyze the provided Shopify store JSON payload (products, reviews, metadata, policies, etc.) and produce a comprehensive Store Context Profile followed by a prioritized GEO improvement plan based on the following 10 principles.
 
-Required JSON schema:
+### GEO PRINCIPLES
+1. Third-Party Authority: AI favors Earned Media (reviews, expert mentions) over brand-owned content. Analyze if content is "citation-ready."
+2. AI Answer Visibility: Aim for inclusion *inside* the AI response. Success is measured by word count contribution and citation frequency.
+3. Justifiability: AI is a Decision Engine. Content must provide reasons *why* (e.g., "Best for X because Y").
+4. Structured Data: Use JSON-LD (Product, FAQ, Organization) to treat the store as an API for AI.
+5. High-Impact Strategies:
+   * Stats (+30-40% visibility): Use quantitative data.
+   * Citations (+30-40%): Reference studies/certifications.
+   * Quotes (+25-35%): Customer/expert testimonials.
+   * Fluency (+15-30%): Scannable, clear prose.
+6. Engine-Specific Needs: GPT (Authority), Gemini (Structured/Concise), Perplexity (Citations).
+7. Full Journey: Content must cover Awareness (guides), Consideration (vs. pages), Decision (pricing/trust), and Post-purchase (care).
+8. GEO Defense: Build a moat of structured, high-authority content to prevent competitors from displacing your AI citations.
+9. The Equalizer: GEO offers a +115% boost for lower-ranked sites; quality beats brand size.
+10. AI Readability: Focus on semantic clarity and "extraction readiness" over keyword density.
+
+### ANALYSIS FRAMEWORK
+LAYER 1: Store-Level Health Score (0-100)
+ * Schema (20%): Completeness of JSON-LD.
+ * Content Quality (20%): Depth, stats, and use-case targeting.
+ * Trust (15%): Review quality and expert signals.
+ * Extractability (15%): Scannability and Q&A formats.
+ * Journey/Policy (20%): Funnel coverage and shipping/returns clarity.
+ * Cross-Engine (10%): Optimization for different AI types.
+
+LAYER 2: Product Deep-Dive
+ * Description Score: Check for Statistics Density (min. 5 per product), Citation Readiness, and "Justification Fragments" (e.g., "Ideal for...").
+ * Metadata: Evaluate Title [Brand+Type+Feature], Tags, Metafields, and Alt Text.
+ * AI Recommendation Readiness: "Cold Start Score" (can AI recommend this with zero user data?).
+
+LAYER 3: Gap Analysis
+ * Content Gaps: Missing FAQs, "How-to" guides, or "X vs Y" comparisons.
+ * Trust Gaps: Missing aggregate ratings or certifications in structured data.
+
+LAYER 4: Competitive Positioning
+ * Map specific natural-language queries (e.g., "Best [category] for [use-case]") to products. Identify items at risk of being skipped.
+
+### STRICT GUIDELINES & FAIL-SAFES
+ * No Generic Advice: Every tip MUST reference specific keys, values, or strings from the provided JSON data.
+ * Missing Data Protocol: If specific JSON fields (like reviews, schema, or policies) are completely missing, explicitly state "DATA MISSING" and score that section a 0. Do not guess or hallucinate data.
+ * Quantify: Use the principle percentages (e.g., "Adding these 3 stats will boost visibility by ~30%").
+ * AI-First Mindset: Ask: "Would an AI agent cite this product as a top 3 choice based on this data?"
+
+OUTPUT STRICTLY IN VALID JSON. Required schema:
 {
-  "healthScore": <number 0-100>,
-  "summary": "<1-2 sentence overview>",
-  "findings": [
-    {
-      "title": "<short title>",
-      "severity": "HIGH" | "MEDIUM" | "LOW",
-      "category": "Policy" | "SEO" | "Inventory" | "Pricing" | "Compliance" | "Content",
-      "product": "<product title or 'Store-wide'>",
-      "explanation": "<specific evidence>",
-      "suggestion": "<actionable fix>"
-    }
-  ]
-}
-
-Focus on: policy contradictions, missing SEO (alt text, descriptions), pricing errors (compare_at < price), inventory issues (0 stock on active), compliance risks, content gaps.`;
+  "storeContextSynthesis": "<~400 word narrative: store identity, target demographic, product categories, price positioning, value props, and core policies (shipping, returns, terms). This is a SYSTEM-ONLY field.>",
+  "executiveSummary": {
+    "geoHealthScore": <number 0-100>,
+    "grade": "<A|B|C|D|F>",
+    "topThreat": "<single sentence: why AI skips this store>",
+    "topOpportunity": "<single sentence: quickest win>"
+  },
+  "layerScores": {
+    "schema":         { "score": <0-20>, "details": "<specific evidence>" },
+    "contentQuality": { "score": <0-20>, "details": "<specific evidence>" },
+    "trust":          { "score": <0-15>, "details": "<specific evidence>" },
+    "extractability": { "score": <0-15>, "details": "<specific evidence>" },
+    "journeyPolicy":  { "score": <0-20>, "details": "<specific evidence>" },
+    "crossEngine":    { "score": <0-10>, "details": "<specific evidence>" }
+  },
+  "productAnalysis": {
+    "topPerformers":    [{ "title": "<product>", "score": <0-100>, "reason": "<why>" }],
+    "bottomPerformers": [{ "title": "<product>", "score": <0-100>, "reason": "<why>" }]
+  },
+  "actionPlan": {
+    "critical": [{ "title": "<action>", "principle": "<GEO principle #>", "what": "<specific change>", "why": "<which principle & expected impact>", "how": "<before → after example using actual store data>", "impact": "HIGH" }],
+    "highPriority": [{ "title": "<action>", "principle": "<GEO principle #>", "what": "<specific change>", "why": "<which principle & expected impact>", "how": "<before → after example>", "impact": "MEDIUM" }],
+    "strategic": [{ "title": "<action>", "principle": "<GEO principle #>", "what": "<specific change>", "why": "<which principle & expected impact>", "how": "<before → after example>", "impact": "HIGH" }]
+  },
+  "projectedImpact": {
+    "estimatedVisibilityIncrease": "<e.g. +45-65%>",
+    "timeline": "<e.g. 2-4 weeks for critical, 1-2 months for high priority>"
+  }
+}`;
 
   try {
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -486,9 +497,9 @@ Focus on: policy contradictions, missing SEO (alt text, descriptions), pricing e
       contents: [
         { role: 'user', parts: [{ text: systemPrompt + '\n\nStore Data:\n' + JSON.stringify(trimmed) }] },
       ],
-      generationConfig: { 
-        temperature: 0.1, 
-        maxOutputTokens: 8192,
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 32768,
         responseMimeType: "application/json"
       },
     });
@@ -501,30 +512,37 @@ Focus on: policy contradictions, missing SEO (alt text, descriptions), pricing e
     const data = geminiRes.json();
     if (!geminiRes.ok) {
       const errMsg = data?.error?.message || JSON.stringify(data);
-      console.error(`Gemini audit error (${geminiRes.status}):`, errMsg);
+      console.error(`Gemini GEO audit error (${geminiRes.status}):`, errMsg);
       return res.status(geminiRes.status).json({ error: `Gemini API error: ${errMsg}` });
     }
 
     let rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     if (!rawText) return res.status(500).json({ error: 'Gemini returned empty audit' });
 
-    // Parse JSON directly since we enforced responseMimeType
     let audit;
     try {
       audit = JSON.parse(rawText);
     } catch (parseErr) {
-      console.error('Failed to parse Gemini audit:', rawText.slice(0, 500));
-      audit = { healthScore: 50, summary: 'Audit completed but response was malformed.', findings: [] };
+      console.error('Failed to parse GEO audit:', rawText.slice(0, 500));
+      return res.status(500).json({ error: 'GEO audit response was malformed' });
     }
 
-    console.log(`✅ Store audit complete: score=${audit.healthScore}, findings=${audit.findings?.length || 0}`);
-    return res.json(audit);
+    // ── Save storeContextSynthesis as internal policy (replaces old global policy) ──
+    if (audit.storeContextSynthesis) {
+      policyStore.set(shop, { policy: audit.storeContextSynthesis, generatedAt: Date.now() });
+      console.log(`🧠 Store Context Synthesis saved for ${shop} (${audit.storeContextSynthesis.length} chars)`);
+    }
+
+    // ── CRITICAL: Strip storeContextSynthesis before sending to frontend ──
+    const { storeContextSynthesis, ...frontendAudit } = audit;
+
+    console.log(`✅ GEO audit complete: score=${frontendAudit.executiveSummary?.geoHealthScore}, grade=${frontendAudit.executiveSummary?.grade}`);
+    return res.json(frontendAudit);
   } catch (err) {
-    console.error('Store audit error:', err.message);
-    return res.status(500).json({ error: 'Store audit failed: ' + err.message });
+    console.error('GEO audit error:', err.message);
+    return res.status(500).json({ error: 'GEO audit failed: ' + err.message });
   }
 });
-
 // ── Deep Product Analysis (Gemma 4 31B via Gemini API) ───────────────────────
 app.post('/api/audit/product', async (req, res) => {
   if (!GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
@@ -533,7 +551,7 @@ app.post('/api/audit/product', async (req, res) => {
   if (!shop || !product) return res.status(400).json({ error: 'Missing shop or product' });
 
   const stored = policyStore.get(shop);
-  if (!stored) return res.status(400).json({ error: 'Global policy not generated yet. Call /api/policy/generate first.' });
+  if (!stored) return res.status(400).json({ error: 'Store context not available. Run a GEO audit first.' });
 
   const prompt = `You are an elite Shopify compliance auditor.
 You will be provided with a Global Store Policy and a specific Product's data.
