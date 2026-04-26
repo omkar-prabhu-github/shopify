@@ -1,0 +1,10 @@
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const p = path.join(__dirname, '../.env.local');
+const result = dotenv.config({ path: p });
+console.log("Path:", p);
+console.log("Result:", result);
+console.log("KEY:", process.env.GEMINI_API_KEY);

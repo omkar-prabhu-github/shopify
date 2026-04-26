@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { LoginView } from './components/LoginView';
-import { ExtractingView } from './components/ExtractingView';
-import { DashboardView } from './components/DashboardView';
+import { LoginView } from './features/auth/LoginView';
+import { ExtractingView } from './features/extraction/ExtractingView';
+import { DashboardView } from './features/dashboard/DashboardView';
 import { fetchShopifyData } from './lib/shopify';
 import { transformShopifyData } from './lib/transformers';
 

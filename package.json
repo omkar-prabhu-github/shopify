@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "proxy": "node proxy-server.cjs",
+    "proxy": "node backend/server.js",
     "start": "concurrently \"npm run proxy\" \"npm run dev\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
