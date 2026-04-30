@@ -1,25 +1,45 @@
-@import "tailwindcss";
+/* Global styles — Polaris-native, no Tailwind */
 
-@layer base {
-  body {
-    @apply bg-slate-50 text-slate-900;
-  }
+body {
+  margin: 0;
+  padding: 0;
 }
 
-@layer utilities {
-  .custom-scroll::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  .custom-scroll::-webkit-scrollbar-track {
-    background: rgba(31, 41, 55, 0.5); 
-    border-radius: 8px;
-  }
-  .custom-scroll::-webkit-scrollbar-thumb {
-    background: rgba(75, 85, 99, 0.8); 
-    border-radius: 8px;
-  }
-  .custom-scroll::-webkit-scrollbar-thumb:hover {
-    background: rgba(107, 114, 128, 0.8); 
-  }
+/* Smooth animations for dashboard cards */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer-bar {
+  height: 14px;
+  border-radius: 7px;
+  margin: 6px 0;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--p-color-border, #ccc);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--p-color-border-hover, #999);
 }

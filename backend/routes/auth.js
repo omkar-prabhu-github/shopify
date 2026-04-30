@@ -5,7 +5,7 @@ import { httpsRequest } from '../services/shopify/rest.js';
 
 const router = express.Router();
 
-const SCOPES = 'read_products,write_products,read_content,read_customers,read_orders,read_inventory,read_discounts,read_price_rules,read_online_store_pages,read_online_store_navigation';
+const SCOPES = 'read_products,write_products,read_content,write_content,read_customers,read_orders,read_inventory,write_inventory,read_discounts,write_discounts,read_price_rules,write_price_rules,read_online_store_pages,write_online_store_pages,read_online_store_navigation,write_online_store_navigation,read_legal_policies,write_legal_policies,read_themes,write_theme_code,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_files,write_files,read_translations,write_translations,read_locales,write_locales';
 
 router.get('/', (req, res) => {
   const { shop } = req.query;
@@ -69,13 +69,26 @@ router.get('/callback', async (req, res) => {
     });
     console.log(`🔑 Token & Refresh Token obtained for ${shop}`);
 
-    const host = req.query.host;
-    return res.redirect(`/?shop=${shop}${host ? `&host=${host}` : ''}`);
+    // Redirect back to the app root — stays inside the Shopify iframe
+    // The React app will pick up shop & token from URL params
+    return res.redirect(`/?shop=${shop}&token=${tokenData.access_token}`);
 
   } catch (err) {
     console.error('💥 OAuth callback error:', err);
     return res.status(500).json({ error: 'OAuth callback failed', message: err.message });
   }
+});
+
+// Session endpoint — allows the embedded iframe to retrieve the stored token
+router.get('/session', (req, res) => {
+  const shop = req.query.shop;
+  if (!shop) return res.status(400).json({ error: 'Missing ?shop= parameter' });
+
+  const tokenData = tokenStore.get(shop);
+  if (tokenData && tokenData.accessToken) {
+    return res.json({ shop, token: tokenData.accessToken });
+  }
+  return res.status(401).json({ error: 'No active session for this shop' });
 });
 
 export default router;

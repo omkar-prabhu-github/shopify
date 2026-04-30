@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { fetchStoreAudit } from '../../../api/auditClient';
 
-const AUDIT_CACHE_KEY = 'agentlens_audit';
+const AUDIT_CACHE_KEY = 'axiom_audit';
 
 export function useStoreAudit(shop: string) {
   const getCachedAudit = () => {

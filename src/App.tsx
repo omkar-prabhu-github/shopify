@@ -7,7 +7,7 @@ import { transformShopifyData } from './lib/transformers';
 
 type ViewState = 'login' | 'extracting' | 'dashboard' | 'error';
 
-const CACHE_KEY = 'agentlens_store_data';
+const CACHE_KEY = 'axiom_store_data';
 
 // Detect if we're inside Shopify's embedded iframe
 const isEmbedded = window.self !== window.top;
@@ -51,12 +51,29 @@ function App() {
   const handleReExtract = () => {
     // Clear all cached data
     sessionStorage.removeItem(CACHE_KEY);
-    sessionStorage.removeItem('agentlens_audit');
+    sessionStorage.removeItem('axiom_audit');
 
     const shop = sessionStorage.getItem('shopify_shop');
     const token = sessionStorage.getItem('shopify_token');
     if (shop && token) {
       handleExtract(shop, token);
+    }
+  };
+
+  // Silent background re-extraction (no loading screen, no audit clear)
+  const refreshData = async () => {
+    const shop = sessionStorage.getItem('shopify_shop');
+    const token = sessionStorage.getItem('shopify_token');
+    if (!shop || !token) return;
+    try {
+      console.log('🔄 Silent re-extraction after fix...');
+      const rawData = await fetchShopifyData(shop, token);
+      const transformedData = transformShopifyData(rawData);
+      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(transformedData)); } catch {}
+      setMasterJson(transformedData);
+      console.log('✅ Store data refreshed');
+    } catch (err: any) {
+      console.warn('⚠️ Silent re-extraction failed:', err.message);
     }
   };
 
@@ -90,20 +107,40 @@ function App() {
       // No cache — do fresh extraction
       handleExtract(shop, token);
     } else if (isEmbedded) {
-      // We're inside Shopify but have no credentials yet
-      // Show a loading state — the backend root route should handle auth
-      setView('extracting');
+      // We're inside Shopify admin iframe but have no token
+      // Try to get the shop from URL, then fetch token from backend session
+      const embeddedShop = params.get('shop');
+      if (embeddedShop) {
+        autoStarted.current = true;
+        console.log('🔄 Embedded mode — fetching session token from backend...');
+        fetch(`/api/auth/session?shop=${encodeURIComponent(embeddedShop)}`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.token) {
+              console.log('✅ Got session token from backend');
+              sessionStorage.setItem('shopify_shop', embeddedShop);
+              sessionStorage.setItem('shopify_token', data.token);
+              handleExtract(embeddedShop, data.token);
+            } else {
+              console.log('❌ No session — showing extracting state');
+              setView('extracting');
+            }
+          })
+          .catch(() => setView('extracting'));
+      } else {
+        setView('extracting');
+      }
     }
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans">
+    <div style={{ minHeight: '100vh', fontFamily: 'var(--p-font-family-sans)' }}>
       {(view === 'login' || view === 'error') && !isEmbedded && (
         <LoginView onExtract={handleExtract} error={errorMessage} />
       )}
       {view === 'extracting' && <ExtractingView />}
       {view === 'dashboard' && masterJson && (
-        <DashboardView data={masterJson} onReExtract={handleReExtract} />
+        <DashboardView data={masterJson} onReExtract={handleReExtract} refreshData={refreshData} />
       )}
     </div>
   );

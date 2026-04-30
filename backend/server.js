@@ -13,6 +13,8 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 import authRouter from './routes/auth.js';
 import shopifyProxyRouter from './routes/shopify-proxy.js';
 import aiAuditRouter from './routes/ai-audit.js';
+import fixRouter from './routes/fix.js';
+import blogRouter from './routes/blog.js';
 
 const app = express();
 const PORT = 3000;
@@ -28,20 +30,25 @@ app.use((req, res, next) => {
 });
 
 // Root route
+import { tokenStore } from './store.js';
+
 app.get('/', (req, res, next) => {
   const { shop, token } = req.query;
+  // If we have both shop and token in URL, pass through to Vite
   if (shop && token) return next();
 
   if (shop) {
-    // Need tokenStore to resolve this if token exists. Since this needs internal state,
-    // we should import it or handle it in auth. But for now we just redirect.
+    // Check if we already have a stored token for this shop
+    const stored = tokenStore.get(shop);
+    if (stored && stored.accessToken) {
+      // Token exists — let Vite serve the React app (it'll fetch session from /api/auth/session)
+      return next();
+    }
+    // No token stored — start OAuth flow
     return res.redirect(`/api/auth?shop=${shop}`);
   }
   next();
 });
-
-// Install page route
-import { tokenStore } from './store.js';
 
 app.get('/install', (req, res) => {
   res.send(`<!DOCTYPE html>
@@ -49,7 +56,7 @@ app.get('/install', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Install AgentLens</title>
+  <title>Install Axiom</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -60,7 +67,7 @@ app.get('/install', (req, res) => {
 </head>
 <body>
   <div>
-    <h1>Install AgentLens</h1>
+    <h1>Install Axiom</h1>
     <form onsubmit="event.preventDefault(); window.location.href = '/api/auth?shop=' + document.getElementById('shop').value + '.myshopify.com'">
       <input id="shop" type="text" placeholder="mystore" required />
       <button type="submit">Install</button>
@@ -74,6 +81,8 @@ app.get('/install', (req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/shopify', shopifyProxyRouter);
 app.use('/api/audit', aiAuditRouter);
+app.use('/api/fix', fixRouter);
+app.use('/api/blog', blogRouter);
 
 // Catch-all Vite Proxy
 app.use('/', createProxyMiddleware({

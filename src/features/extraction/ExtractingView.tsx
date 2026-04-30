@@ -1,17 +1,34 @@
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+import {
+  Frame, Page, Card, BlockStack, Text, Spinner, Box, ProgressBar,
+} from '@shopify/polaris';
 
 export const ExtractingView: React.FC = () => {
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-[32px] p-12 shadow-[0_8px_30px_rgb(0,0,0,0.04)] max-w-sm w-full flex flex-col items-center text-center">
-        <div className="relative mb-6">
-          <div className="absolute inset-0 bg-blue-100 rounded-full blur-xl opacity-50 animate-pulse"></div>
-          <Loader2 className="w-12 h-12 text-blue-600 animate-spin relative z-10" />
+    <Frame>
+      <Page>
+        <div style={{ maxWidth: 480, margin: '80px auto' }}>
+          <Card>
+            <BlockStack gap="400" align="center" inlineAlign="center">
+              <Box padding="200">
+                <Spinner size="large" />
+              </Box>
+              <Text as="h2" variant="headingLg" alignment="center">
+                Connecting to your store
+              </Text>
+              <Text as="p" variant="bodyMd" tone="subdued" alignment="center">
+                Securely extracting your product catalog, collections, policies, and blog content…
+              </Text>
+              <Box paddingBlockStart="200" paddingBlockEnd="100" width="100%">
+                <ProgressBar progress={75} size="small" tone="primary" />
+              </Box>
+              <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+                This usually takes 10-15 seconds
+              </Text>
+            </BlockStack>
+          </Card>
         </div>
-        <h2 className="text-xl font-semibold text-slate-900 mb-2">Extracting Data</h2>
-        <p className="text-slate-500 text-sm">Please wait while we securely connect to your store and pull catalog data...</p>
-      </div>
-    </div>
+      </Page>
+    </Frame>
   );
 };

@@ -2,11 +2,11 @@ import { httpsRequest } from '../shopify/rest.js';
 import { policyStore } from '../../store.js';
 
 const systemPrompt = `# SYSTEM ROLE & TASK
-You are an elite Generative Engine Optimization (GEO) Analyst specializing in ecommerce. Your tone is authoritative, data-backed, and executive.
+You are an elite Generative Engine Optimization (GEO) Analyst and E-commerce Store Auditor. Your tone is authoritative, data-backed, and strictly objective.
 
-Your task is to analyze the provided Shopify store JSON payload (products, reviews, metadata, policies, etc.) and produce a comprehensive Store Context Profile followed by a prioritized GEO improvement plan based on the following 10 principles.
+Your task is to ingest a Shopify store JSON payload (products, reviews, metadata, policies, etc.) and produce a comprehensive Store Context Profile followed by a highly structured, prioritized GEO improvement plan based on the 10 GEO Principles and the 4 Audit Categories.
 
-### GEO PRINCIPLES
+### THE 10 GEO PRINCIPLES
 1. Third-Party Authority: AI favors Earned Media (reviews, expert mentions) over brand-owned content. Analyze if content is "citation-ready."
 2. AI Answer Visibility: Aim for inclusion *inside* the AI response. Success is measured by word count contribution and citation frequency.
 3. Justifiability: AI is a Decision Engine. Content must provide reasons *why* (e.g., "Best for X because Y").
@@ -22,62 +22,92 @@ Your task is to analyze the provided Shopify store JSON payload (products, revie
 9. The Equalizer: GEO offers a +115% boost for lower-ranked sites; quality beats brand size.
 10. AI Readability: Focus on semantic clarity and "extraction readiness" over keyword density.
 
-### ANALYSIS FRAMEWORK
-LAYER 1: Store-Level Health Score (0-100)
- * Schema (20%): Completeness of JSON-LD.
- * Content Quality (20%): Depth, stats, and use-case targeting.
- * Trust (15%): Review quality and expert signals.
- * Extractability (15%): Scannability and Q&A formats.
- * Journey/Policy (20%): Funnel coverage and shipping/returns clarity.
- * Cross-Engine (10%): Optimization for different AI types.
+### ANALYSIS FRAMEWORK (THE 4 LAYERS)
+LAYER 1: Store-Level Health
+ * Schema: Completeness of JSON-LD.
+ * Content Quality: Depth, stats, and use-case targeting.
+ * Trust: Review quality and expert signals.
+ * Extractability: Scannability and Q&A formats.
+ * Journey/Policy: Funnel coverage and shipping/returns clarity.
+ * Cross-Engine: Optimization for different AI types.
 
 LAYER 2: Product Deep-Dive
- * Description Score: Check for Statistics Density (min. 5 per product), Citation Readiness, and "Justification Fragments" (e.g., "Ideal for...").
+ * Description Score: Check for Statistics Density (min. 5 per product), Citation Readiness, and "Justification Fragments".
  * Metadata: Evaluate Title [Brand+Type+Feature], Tags, Metafields, and Alt Text.
- * AI Recommendation Readiness: "Cold Start Score" (can AI recommend this with zero user data?).
 
 LAYER 3: Gap Analysis
  * Content Gaps: Missing FAQs, "How-to" guides, or "X vs Y" comparisons.
- * Trust Gaps: Missing aggregate ratings or certifications in structured data.
+ * Trust Gaps: Missing aggregate ratings or certifications.
 
 LAYER 4: Competitive Positioning
- * Map specific natural-language queries (e.g., "Best [category] for [use-case]") to products. Identify items at risk of being skipped.
+ * Map specific natural-language queries (e.g., "Best [category] for [use-case]") to products.
+
+### THE 4 AUDIT CATEGORIES & DEDUCTIVE SCORING (ANTI-HALLUCINATION)
+To ensure stable scoring (scores must NEVER drop after a fix is applied unless new errors are introduced), use Strict Deductive Scoring.
+Every category starts at 100 points. Deduct points ONLY for explicitly identified issues in the JSON:
+* CRITICAL (-20 pts): Causes legal/sales loss or total AI blindness.
+* HIGH (-10 pts): Severely hurts AI visibility.
+* MEDIUM (-5 pts): Conversion friction or missing stats.
+* LOW (-2 pts): Minor polish or phrasing.
+
+Categorize all issues into:
+1. storeInfrastructure: Missing essential pages (Contact, About), incomplete return policies, broken navigation.
+2. informationMismatch: Contradictions (e.g., product page says "30-Day Returns" but policy says "Final Sale").
+3. productOptimization: Missing specifications, lack of quantitative stats, poor metadata, weak GEO justifiability.
+4. strategicGrowth: Missing trust signals (reviews), missing schema markup, lack of custom domain.
 
 ### STRICT GUIDELINES & FAIL-SAFES
- * No Generic Advice: Every tip MUST reference specific keys, values, or strings from the provided JSON data.
- * Missing Data Protocol: If specific JSON fields (like reviews, schema, or policies) are completely missing, explicitly state "DATA MISSING" and score that section a 0. Do not guess or hallucinate data.
- * Quantify: Use the principle percentages (e.g., "Adding these 3 stats will boost visibility by ~30%").
- * AI-First Mindset: Ask: "Would an AI agent cite this product as a top 3 choice based on this data?"
+ * No Generic Advice: Every tip MUST reference specific keys, values, or strings from the JSON data.
+ * Missing Data Protocol: If data is missing, state "DATA MISSING", apply the deduction, and do not hallucinate data.
+ * AI-First Mindset: Ask: "Would an AI agent cite this product as a top 3 choice?"
+ * ACTIONABLE FIXES: For EVERY action item, you MUST generate a "fixes" array containing concrete, machine-applicable changes. Each fix must have the exact oldValue and a complete newValue. Use product IDs (e.g., "gid://shopify/Product/..."). Supported fix types: product_title, product_description, product_tags, product_metafield, page_content, page_title, collection_description, shop_policy.
 
-OUTPUT STRICTLY IN VALID JSON. Required schema:
+OUTPUT STRICTLY IN VALID JSON. Do not wrap in markdown formatting.
+Required Schema:
+
 {
-  "storeContextSynthesis": "<~400 word narrative: store identity, target demographic, product categories, price positioning, value props, and core policies (shipping, returns, terms). This is a SYSTEM-ONLY field.>",
+  "storeContextSynthesis": "<~400 word narrative: store identity, target demographic, product categories, price positioning, value props, and core policies (shipping, returns). SYSTEM-ONLY field.>",
   "executiveSummary": {
-    "geoHealthScore": <number 0-100>,
+    "geoHealthScore": <number 0-100, weighted average>,
     "grade": "<A|B|C|D|F>",
     "topThreat": "<single sentence: why AI skips this store>",
     "topOpportunity": "<single sentence: quickest win>"
   },
-  "layerScores": {
-    "schema":         { "score": <0-20>, "details": "<specific evidence>" },
-    "contentQuality": { "score": <0-20>, "details": "<specific evidence>" },
-    "trust":          { "score": <0-15>, "details": "<specific evidence>" },
-    "extractability": { "score": <0-15>, "details": "<specific evidence>" },
-    "journeyPolicy":  { "score": <0-20>, "details": "<specific evidence>" },
-    "crossEngine":    { "score": <0-10>, "details": "<specific evidence>" }
+  "geoLayerScores": {
+    "schema":         { "score": <0-20>, "details": "<evidence>" },
+    "contentQuality": { "score": <0-20>, "details": "<evidence>" },
+    "trust":          { "score": <0-15>, "details": "<evidence>" },
+    "extractability": { "score": <0-15>, "details": "<evidence>" },
+    "journeyPolicy":  { "score": <0-20>, "details": "<evidence>" },
+    "crossEngine":    { "score": <0-10>, "details": "<evidence>" }
+  },
+  "categoryScores": {
+    "storeInfrastructure": <0-100 calculated deductively>,
+    "informationMismatch": <0-100 calculated deductively>,
+    "productOptimization": <0-100 calculated deductively>,
+    "strategicGrowth": <0-100 calculated deductively>
   },
   "productAnalysis": {
-    "topPerformers":    [{ "title": "<product>", "score": <0-100>, "reason": "<why>" }],
+    "topPerformers":  [{ "title": "<product>", "score": <0-100>, "reason": "<why>" }],
     "bottomPerformers": [{ "title": "<product>", "score": <0-100>, "reason": "<why>" }]
   },
-  "actionPlan": {
-    "critical": [{ "title": "<action>", "principle": "<GEO principle #>", "what": "<specific change>", "why": "<which principle & expected impact>", "how": "<before → after example using actual store data>", "impact": "HIGH" }],
-    "highPriority": [{ "title": "<action>", "principle": "<GEO principle #>", "what": "<specific change>", "why": "<which principle & expected impact>", "how": "<before → after example>", "impact": "MEDIUM" }],
-    "strategic": [{ "title": "<action>", "principle": "<GEO principle #>", "what": "<specific change>", "why": "<which principle & expected impact>", "how": "<before → after example>", "impact": "HIGH" }]
+  "diagnosticsAndActionPlan": {
+    "storeInfrastructure": [
+      { "severity": "<CRITICAL|HIGH|MEDIUM|LOW>", "principle": "<GEO principle #>", "title": "<action>", "description": "<specific issue>", "impact": "<expected impact>", "fixes": [{ "type": "<fix_type>", "resourceId": "<gid://...>", "resourceTitle": "<human name>", "field": "<field>", "oldValue": "<exact current value>", "newValue": "<complete improved value>", "label": "<short description>" }] }
+    ],
+    "informationMismatch": [
+      { "severity": "<CRITICAL|HIGH|MEDIUM|LOW>", "principle": "<GEO principle #>", "title": "<action>", "description": "<specific issue>", "impact": "<expected impact>", "fixes": [...] }
+    ],
+    "productOptimization": [
+      { "severity": "<CRITICAL|HIGH|MEDIUM|LOW>", "principle": "<GEO principle #>", "title": "<action>", "description": "<specific issue>", "impact": "<expected impact>", "fixes": [...] }
+    ],
+    "strategicGrowth": [
+      { "severity": "<CRITICAL|HIGH|MEDIUM|LOW>", "principle": "<GEO principle #>", "title": "<action>", "description": "<specific issue>", "impact": "<expected impact>", "fixes": [...] }
+    ]
   },
   "projectedImpact": {
     "estimatedVisibilityIncrease": "<e.g. +45-65%>",
-    "timeline": "<e.g. 2-4 weeks for critical, 1-2 months for high priority>"
+    "timeline": "<e.g. 2-4 weeks>"
   }
 }`;
 
@@ -112,40 +142,87 @@ export async function runGeoAudit(shop, storeData) {
     trimmed.products = trimmed.products.slice(0, 30);
   }
 
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-  const payload = JSON.stringify({
-    system_instruction: { parts: [{ text: systemPrompt }] },
-    contents: [
-      { role: 'user', parts: [{ text: "Store Data:\n" + JSON.stringify(trimmed) }] },
-    ],
-    generationConfig: {
-      temperature: 0.1,
-      maxOutputTokens: 32768,
-      responseMimeType: "application/json"
-    },
-  });
+  const MODELS = [
+    'gemini-3-flash-preview',
+    'gemini-2.5-flash',
+  ];
 
-  const geminiRes = await httpsRequest(geminiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-  }, payload);
+  let audit = null;
+  let lastError = null;
 
-  const data = geminiRes.json();
-  if (!geminiRes.ok) {
-    const errMsg = data?.error?.message || JSON.stringify(data);
-    throw new Error(`Gemini API error: ${errMsg}`);
+  for (const model of MODELS) {
+    try {
+      console.log(`🤖 Trying model: ${model}`);
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      const payload = JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [
+          { role: 'user', parts: [{ text: "Store Data:\n" + JSON.stringify(trimmed) }] },
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 32768,
+          responseMimeType: "application/json"
+        },
+      });
+
+      const geminiRes = await httpsRequest(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+      }, payload);
+
+      const data = geminiRes.json();
+
+      if (!geminiRes.ok) {
+        const errMsg = data?.error?.message || JSON.stringify(data);
+        const status = data?.error?.status || geminiRes.status;
+        // Check if it's a rate limit / high demand / not found error — try fallback
+        if (status === 429 || status === 503 || status === 404 ||
+            errMsg.includes('high demand') ||
+            errMsg.includes('rate limit') ||
+            errMsg.includes('Resource exhausted') ||
+            errMsg.includes('RESOURCE_EXHAUSTED') ||
+            errMsg.includes('overloaded') ||
+            errMsg.includes('not found') ||
+            errMsg.includes('not supported') ||
+            errMsg.includes('does not exist')) {
+          console.warn(`⚠️ ${model} unavailable (${status}): ${errMsg.slice(0, 120)} — falling back...`);
+          lastError = errMsg;
+          continue; // Try next model
+        }
+        throw new Error(`Gemini API error: ${errMsg}`);
+      }
+
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      if (!rawText) {
+        console.warn(`⚠️ ${model} returned empty response — falling back...`);
+        lastError = 'Empty response';
+        continue;
+      }
+
+      try {
+        const cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+        audit = JSON.parse(cleanText);
+        console.log(`✅ GEO audit complete with ${model}: score=${audit?.executiveSummary?.geoHealthScore}, grade=${audit?.executiveSummary?.grade}`);
+        break; // Success — stop trying models
+      } catch (parseErr) {
+        console.error(`Failed to parse ${model} response:`, rawText.slice(0, 500));
+        lastError = 'Malformed response';
+        continue;
+      }
+    } catch (err) {
+      // Network timeout or other transient error — try fallback
+      if (err.message?.includes('timed out') || err.message?.includes('ECONNRESET')) {
+        console.warn(`⚠️ ${model} timed out — falling back...`);
+        lastError = err.message;
+        continue;
+      }
+      throw err; // Re-throw non-transient errors
+    }
   }
 
-  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  if (!rawText) throw new Error('Gemini returned empty audit');
-
-  let audit;
-  try {
-    const cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-    audit = JSON.parse(cleanText);
-  } catch (parseErr) {
-    console.error('Failed to parse GEO audit:', rawText.slice(0, 500));
-    throw new Error('GEO audit response was malformed');
+  if (!audit) {
+    throw new Error(`All models failed. Last error: ${lastError}`);
   }
 
   // Save storeContextSynthesis as internal policy
