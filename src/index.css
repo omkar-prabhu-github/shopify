@@ -1,45 +1,151 @@
-/* Global styles — Polaris-native, no Tailwind */
+/* ═══════════════════════════════════════════════════════════════
+   Axiom — Global Design System
+   Shopify Polaris-native · Inter typeface · Minimal transitions
+   ═══════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* ── Base Reset ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  overflow-y: scroll;         /* prevent scrollbar layout shift */
+  scroll-behavior: smooth;
+}
 
 body {
   margin: 0;
   padding: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'San Francisco', 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--p-color-text);
+  background: var(--p-color-bg-surface-secondary);
 }
 
-/* Smooth animations for dashboard cards */
-@keyframes fadeSlideIn {
+/* ── Interactive Transitions ── */
+.Polaris-Card,
+.Polaris-LegacyCard,
+.Polaris-Box,
+.Polaris-Badge,
+.Polaris-Button {
+  transition: box-shadow 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+
+/* ── Card Hover Lift ── */
+.axiom-card-interactive {
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.axiom-card-interactive:hover {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+  transform: translateY(-1px);
+}
+
+/* ── Score Bar ── */
+.axiom-score-track {
+  height: 6px;
+  background: var(--p-color-bg-fill-secondary);
+  border-radius: 3px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+.axiom-score-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Issue Row Hover ── */
+.axiom-issue-row {
+  transition: box-shadow 0.15s ease;
+  border-radius: 8px;
+}
+.axiom-issue-row:hover {
+  box-shadow: 0 0 0 1px var(--p-color-border);
+}
+
+/* ── Fade-in Animation ── */
+@keyframes axiomFadeIn {
   from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.axiom-fade-in {
+  animation: axiomFadeIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
 }
 
+/* ── Staggered children animation ── */
+.axiom-stagger > * {
+  opacity: 0;
+  animation: axiomFadeIn 0.3s ease forwards;
+}
+.axiom-stagger > *:nth-child(1) { animation-delay: 0s; }
+.axiom-stagger > *:nth-child(2) { animation-delay: 0.04s; }
+.axiom-stagger > *:nth-child(3) { animation-delay: 0.08s; }
+.axiom-stagger > *:nth-child(4) { animation-delay: 0.12s; }
+.axiom-stagger > *:nth-child(5) { animation-delay: 0.16s; }
+.axiom-stagger > *:nth-child(6) { animation-delay: 0.20s; }
+
+/* ── Shimmer Skeleton ── */
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
+  0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
-
 .shimmer-bar {
   height: 14px;
   border-radius: 7px;
   margin: 6px 0;
-  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background: linear-gradient(90deg, #e8ecf1 25%, #f4f6f8 50%, #e8ecf1 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* ── Pulse animation for loading ── */
+@keyframes axiomPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+.axiom-pulse {
+  animation: axiomPulse 2s ease-in-out infinite;
 }
 
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: var(--p-color-border, #ccc);
-  border-radius: 8px;
+  background: var(--p-color-border, #d1d5db);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--p-color-border-hover, #9ca3af);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--p-color-border-hover, #999);
+/* ── Progress bar animation ── */
+@keyframes axiomProgress {
+  0%   { width: 5%; }
+  30%  { width: 40%; }
+  60%  { width: 65%; }
+  80%  { width: 80%; }
+  100% { width: 92%; }
+}
+.axiom-progress-animate {
+  animation: axiomProgress 12s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* ── Separator Dot ── */
+.axiom-dot {
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--p-color-text-subdued);
+  vertical-align: middle;
+  margin: 0 2px;
 }

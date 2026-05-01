@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Frame, Tabs, Page, Box } from '@shopify/polaris';
+import { Tabs, Text, InlineStack } from '@shopify/polaris';
 import { useStoreAudit } from './hooks/useStoreAudit';
 import { DashboardContext } from './DashboardContext';
 import { OverviewPage } from './pages/OverviewPage';
@@ -37,7 +37,8 @@ export const AppShell: React.FC<AppShellProps> = ({ data, onReExtract, refreshDa
 
   const navigate = useCallback((path: string) => {
     window.location.hash = '#' + path;
-  }, []);
+    refreshData?.();
+  }, [refreshData]);
 
   const ctx = data?.store_context || {};
   const shop = sessionStorage.getItem('shopify_shop') || ctx?.domain || '';
@@ -72,19 +73,39 @@ export const AppShell: React.FC<AppShellProps> = ({ data, onReExtract, refreshDa
 
   return (
     <DashboardContext.Provider value={contextValue}>
-      <Frame>
-        <div style={{ borderBottom: '1px solid var(--p-color-border)' }}>
-          <Box paddingInlineStart="400" paddingInlineEnd="400">
-            <Tabs
-              tabs={TABS}
-              selected={selectedTab >= 0 ? selectedTab : 0}
-              onSelect={(idx) => navigate(TABS[idx].id)}
-              fitted
-            />
-          </Box>
-        </div>
-        {renderPage()}
-      </Frame>
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+
+        {/* ── Top Navigation ── */}
+        <header style={{
+          borderBottom: '1px solid var(--p-color-border)',
+          background: 'var(--p-color-bg-surface)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 200,
+          flexShrink: 0,
+        }}>
+          <div style={{ maxWidth: 998, margin: '0 auto', padding: '0 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+
+              {/* Tabs */}
+              <div style={{ flex: 1 }}>
+                <Tabs
+                  tabs={TABS}
+                  selected={selectedTab >= 0 ? selectedTab : 0}
+                  onSelect={(idx) => navigate(TABS[idx].id)}
+                />
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* ── Page Content ── */}
+        <main style={{ flex: 1 }}>
+          <div key={route} className="axiom-fade-in">
+            {renderPage()}
+          </div>
+        </main>
+      </div>
     </DashboardContext.Provider>
   );
 };

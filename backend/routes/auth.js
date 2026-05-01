@@ -69,9 +69,9 @@ router.get('/callback', async (req, res) => {
     });
     console.log(`🔑 Token & Refresh Token obtained for ${shop}`);
 
-    // Redirect back to the app root — stays inside the Shopify iframe
-    // The React app will pick up shop & token from URL params
-    return res.redirect(`/?shop=${shop}&token=${tokenData.access_token}`);
+    // Redirect back into the Shopify Admin — stays inside the dashboard
+    const appHandle = process.env.SHOPIFY_CLIENT_ID;
+    return res.redirect(`https://${shop}/admin/apps/${appHandle}`);
 
   } catch (err) {
     console.error('💥 OAuth callback error:', err);

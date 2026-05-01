@@ -108,26 +108,47 @@ function App() {
       handleExtract(shop, token);
     } else if (isEmbedded) {
       // We're inside Shopify admin iframe but have no token
-      // Try to get the shop from URL, then fetch token from backend session
-      const embeddedShop = params.get('shop');
+      // Try multiple sources for the shop domain
+      let embeddedShop = params.get('shop');
+
+      // Fallback: extract shop from Shopify admin URL (referrer or ancestor origin)
+      if (!embeddedShop) {
+        try {
+          const ref = document.referrer || '';
+          // Shopify admin URLs: admin.shopify.com/store/{handle} or {shop}.myshopify.com/admin
+          const myshopMatch = ref.match(/([a-zA-Z0-9-]+\.myshopify\.com)/);
+          if (myshopMatch) embeddedShop = myshopMatch[1];
+
+          if (!embeddedShop) {
+            // Try extracting from admin.shopify.com/store/{handle}/apps/...
+            const storeMatch = ref.match(/admin\.shopify\.com\/store\/([a-zA-Z0-9-]+)/);
+            if (storeMatch) embeddedShop = `${storeMatch[1]}.myshopify.com`;
+          }
+        } catch {}
+      }
+
       if (embeddedShop) {
         autoStarted.current = true;
-        console.log('🔄 Embedded mode — fetching session token from backend...');
+        console.log(`🔄 Embedded mode — fetching session for ${embeddedShop}...`);
         fetch(`/api/auth/session?shop=${encodeURIComponent(embeddedShop)}`)
           .then(r => r.json())
           .then(data => {
             if (data.token) {
               console.log('✅ Got session token from backend');
-              sessionStorage.setItem('shopify_shop', embeddedShop);
+              sessionStorage.setItem('shopify_shop', embeddedShop!);
               sessionStorage.setItem('shopify_token', data.token);
-              handleExtract(embeddedShop, data.token);
+              handleExtract(embeddedShop!, data.token);
             } else {
-              console.log('❌ No session — showing extracting state');
-              setView('extracting');
+              // No session — redirect to OAuth
+              console.log('❌ No session — redirecting to OAuth...');
+              window.top?.location.assign(`/api/auth?shop=${encodeURIComponent(embeddedShop!)}`);
             }
           })
-          .catch(() => setView('extracting'));
+          .catch(() => {
+            window.top?.location.assign(`/api/auth?shop=${encodeURIComponent(embeddedShop!)}`);
+          });
       } else {
+        console.warn('⚠️ Embedded but cannot detect shop domain');
         setView('extracting');
       }
     }

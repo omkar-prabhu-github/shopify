@@ -49,7 +49,7 @@ router.post('/generate', async (req, res) => {
             title: generated.title,
             body_html: generated.bodyHtml,
             tags: (generated.tags || []).join(', '),
-            published: false, // Draft by default
+            published: true, // Publish directly
           },
         });
 
@@ -108,6 +108,50 @@ router.get('/list', async (req, res) => {
   } catch (err) {
     console.warn('Blog list failed:', err.message);
     return res.json({ blogs: [] });
+  }
+});
+
+// POST /api/blog/publish — publish already-generated content (no AI call)
+router.post('/publish', async (req, res) => {
+  const shop = req.headers['x-shopify-domain'];
+  const reqToken = req.headers['x-shopify-token'];
+  if (!shop || !reqToken) return res.status(401).json({ error: 'Missing auth headers' });
+
+  const { blogId, title, bodyHtml, tags } = req.body;
+  if (!blogId || !title || !bodyHtml) return res.status(400).json({ error: 'Missing required fields' });
+
+  const token = await getValidToken(shop, reqToken);
+
+  try {
+    const articlePayload = JSON.stringify({
+      article: {
+        title,
+        body_html: bodyHtml,
+        tags: Array.isArray(tags) ? tags.join(', ') : (tags || ''),
+        published: true,
+      },
+    });
+
+    const createUrl = `${normalizeDomain(shop)}/admin/api/2024-10/blogs/${blogId}/articles.json`;
+    const createRes = await httpsRequest(createUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': token,
+        'Content-Length': Buffer.byteLength(articlePayload),
+      },
+    }, articlePayload);
+
+    const result = createRes.json();
+    if (!createRes.ok) {
+      throw new Error(result?.errors ? JSON.stringify(result.errors) : `HTTP ${createRes.status}`);
+    }
+
+    console.log(`✅ Blog published: "${title}"`);
+    return res.json({ ok: true, published: true, article: result?.article || null });
+  } catch (err) {
+    console.error('Blog publish error:', err.message);
+    return res.status(500).json({ error: err.message });
   }
 });
 

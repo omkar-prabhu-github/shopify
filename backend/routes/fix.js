@@ -101,7 +101,32 @@ async function resolveResourceId(resourceId, type, endpoint, token, resourceTitl
   }
 
   let gid = null;
-  const resourceType = type.startsWith('product') ? 'products' : type.startsWith('collection') ? 'collections' : type.startsWith('article') ? 'articles' : 'pages';
+
+  // For articles, use a different search approach since there's no top-level 'articles' query
+  if (type.startsWith('article')) {
+    // If handle is numeric, construct the GID directly
+    if (/^\d+$/.test(handle)) {
+      gid = `gid://shopify/Article/${handle}`;
+      console.log(`✅ Constructed article GID from numeric ID: ${gid}`);
+      return gid;
+    }
+
+    // Search articles by title across all blogs
+    if (resourceTitle) {
+      const escapedTitle = resourceTitle.replace(/"/g, '\\"');
+      gid = await tryQuery(
+        `{ articles(first: 5, query: "title:${escapedTitle}") { nodes { id title } } }`,
+        (d) => d?.data?.articles?.nodes?.[0]?.id,
+        `Article title search "${resourceTitle}"`
+      );
+      if (gid) { console.log(`✅ Resolved article "${resourceTitle}" → ${gid}`); return gid; }
+    }
+
+    console.warn(`⚠️ Could not resolve article "${resourceId}"`);
+    return resourceId;
+  }
+
+  const resourceType = type.startsWith('product') ? 'products' : type.startsWith('collection') ? 'collections' : 'pages';
 
   // Attempt 1: Search by handle
   gid = await tryQuery(
@@ -163,10 +188,23 @@ router.post('/apply', async (req, res) => {
   if (!shop || !reqToken) return res.status(401).json({ error: 'Missing auth headers' });
 
   const token = await getValidToken(shop, reqToken);
-  const { type, resourceId, newValue, extra, resourceTitle } = req.body;
+  const { type, resourceId: rawResourceId, newValue, extra, resourceTitle } = req.body;
+  const resourceId = String(rawResourceId || '');
 
   if (!type || newValue === undefined) {
     return res.status(400).json({ error: 'Missing required fields: type, newValue' });
+  }
+
+  // ── Special case: store name cannot be changed via API ──
+  if (type === 'store_name' || type === 'shop_policy' || type === 'shop_name') {
+    // Shopify's Shop resource is read-only for the name field.
+    // Return success with instructions to change it manually.
+    console.log(`ℹ️ Store name fix requested: "${newValue}" — must be changed in Shopify Admin`);
+    return res.json({
+      success: true,
+      manual: true,
+      message: `Store name cannot be changed via API. Go to Shopify Admin → Settings → Store details → Store name, and change it to: "${newValue}"`,
+    });
   }
 
   let mutationDef = MUTATIONS[type];

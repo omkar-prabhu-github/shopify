@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import {
-  Page, Card, Text, BlockStack, Box, Banner, Divider,
-  InlineStack, Badge, Collapsible, EmptyState, Button,
+  Page, Card, Text, BlockStack, Box, Banner, Divider, Badge,
+  InlineStack, Button, Collapsible, EmptyState,
 } from '@shopify/polaris';
 import { useDashboard } from '../DashboardContext';
 import { FixPreviewModal } from '../components/FixPreviewModal';
 import type { FixPayload } from '../../../api/fixClient';
+import { filterAlreadyFixed } from '../../../utils/aiFixRegistry';
 
 interface ActionItem {
   severity: string;
@@ -14,7 +15,6 @@ interface ActionItem {
   description: string;
   impact: string;
   fixes?: FixPayload[];
-  // Legacy fields (backward compat)
   what?: string;
   why?: string;
   how?: string;
@@ -30,57 +30,72 @@ function severityTone(severity: string): 'critical' | 'warning' | 'info' | 'succ
   }
 }
 
+function fixKey(fix: FixPayload): string {
+  return `${fix.type}::${fix.resourceId}::${fix.field}::${fix.label}`;
+}
+
+// ── Action Card ──
 function ActionCard({ item, onFixClick, appliedFixes, showFixes = true }: {
   item: ActionItem;
   onFixClick: (fix: FixPayload) => void;
   appliedFixes: Set<string>;
   showFixes?: boolean;
 }) {
+  // Types that can't be applied via Shopify API — shown as suggestions only
+  const MANUAL_ONLY_TYPES = new Set(['store_name', 'shop_policy', 'shop_name']);
+  const remainingFixes = showFixes
+    ? filterAlreadyFixed((item.fixes || [])
+        .filter(f => !MANUAL_ONLY_TYPES.has(f.type))
+        .filter(f => !appliedFixes.has(fixKey(f))))
+    : [];
   const [open, setOpen] = React.useState(false);
-  const remainingFixes = showFixes ? (item.fixes || []).filter(f => !appliedFixes.has(fixKey(f))) : [];
   const allFixed = showFixes && (item.fixes?.length || 0) > 0 && remainingFixes.length === 0;
-  const tone = severityTone(item.severity);
 
   return (
-    <Card>
+    <div className="axiom-issue-row" style={{
+      padding: 14,
+      background: item.severity === 'CRITICAL' ? 'var(--p-color-bg-surface-critical)' :
+        item.severity === 'HIGH' ? 'var(--p-color-bg-surface-caution)' : 'var(--p-color-bg-surface-secondary)',
+    }}>
       <BlockStack gap="200">
-        <InlineStack gap="200" blockAlign="center" wrap>
-          <Text as="span" variant="bodyMd" fontWeight="semibold">{item.title}</Text>
-          <Badge tone={tone}>{item.severity || item.impact || 'INFO'}</Badge>
-          {item.principle && <Badge>Principle {item.principle}</Badge>}
-          {!showFixes && <Badge tone="info">Suggestion</Badge>}
-          {showFixes && allFixed && <Badge tone="success">✓ Fixed</Badge>}
-          {showFixes && !allFixed && remainingFixes.length > 0 && (
-            <Badge tone="info">{remainingFixes.length} fix{remainingFixes.length > 1 ? 'es' : ''}</Badge>
+        <InlineStack gap="300" blockAlign="start" wrap={false}>
+          <div style={{ flexShrink: 0 }}>
+            <Badge tone={severityTone(item.severity)}>{item.severity || 'INFO'}</Badge>
+          </div>
+          <BlockStack gap="100" align="start">
+            <Text as="span" variant="bodySm" fontWeight="semibold">{item.title}</Text>
+            <Text as="span" variant="bodySm" tone="subdued">{item.description || item.what || ''}</Text>
+          </BlockStack>
+          {allFixed && (
+            <div style={{ flexShrink: 0, marginLeft: 'auto' }}>
+              <Badge tone="success">Fixed</Badge>
+            </div>
           )}
         </InlineStack>
-        <Text as="p" variant="bodySm">{item.description || item.what || ''}</Text>
-        <button
-          onClick={() => setOpen(!open)}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-            fontSize: 12, fontWeight: 600, color: 'var(--p-color-text-emphasis)',
-          }}
-        >
-          {open ? '▲ Hide details' : '▼ View details'}
+
+        <button onClick={() => setOpen(!open)} style={{
+          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+          fontSize: 12, fontWeight: 500, color: 'var(--p-color-text-emphasis)',
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+        }}>
+          <span style={{ fontSize: 10 }}>{open ? '▲' : '▼'}</span> {open ? 'Hide details' : 'View details'}
         </button>
+
         <Collapsible open={open} id={`action-${item.title}`}>
           <BlockStack gap="300">
-            <Box background="bg-surface-secondary" padding="300" borderRadius="200">
-              <BlockStack gap="200">
-                {(item.impact || item.why) && (
-                  <Text as="p" variant="bodySm"><strong>Impact:</strong> {item.impact || item.why}</Text>
-                )}
-                {item.how && (
-                  <Text as="p" variant="bodySm"><strong>How:</strong> {item.how}</Text>
-                )}
-              </BlockStack>
-            </Box>
+            {(item.impact || item.why) && (
+              <Box background="bg-surface" padding="300" borderRadius="200">
+                <Text as="p" variant="bodySm"><strong>Impact:</strong> {item.impact || item.why}</Text>
+                {item.how && <Text as="p" variant="bodySm"><strong>How:</strong> {item.how}</Text>}
+              </Box>
+            )}
             {remainingFixes.length > 0 && (
               <BlockStack gap="200">
                 <Text as="span" variant="headingSm">Available Fixes</Text>
                 {remainingFixes.map((fix, i) => (
-                  <Box key={i} background="bg-surface-info" padding="200" borderRadius="200">
+                  <div key={i} className="axiom-issue-row" style={{
+                    padding: 10, background: 'var(--p-color-bg-surface)',
+                  }}>
                     <InlineStack align="space-between" blockAlign="center">
                       <BlockStack gap="050">
                         <Text as="span" variant="bodySm" fontWeight="semibold">{fix.label}</Text>
@@ -92,39 +107,27 @@ function ActionCard({ item, onFixClick, appliedFixes, showFixes = true }: {
                         Preview &amp; Fix
                       </Button>
                     </InlineStack>
-                  </Box>
+                  </div>
                 ))}
               </BlockStack>
             )}
             {allFixed && (
-              <Banner tone="success">
-                <p>All fixes for this action have been applied.</p>
-              </Banner>
+              <Banner tone="success"><p>All fixes for this action have been applied.</p></Banner>
             )}
           </BlockStack>
         </Collapsible>
       </BlockStack>
-    </Card>
+    </div>
   );
 }
 
-function fixKey(fix: FixPayload): string {
-  return `${fix.type}::${fix.resourceId}::${fix.field}::${fix.label}`;
-}
-
 const CATEGORIES = [
-  { key: 'storeInfrastructure', label: 'Store Infrastructure', icon: '🏗️', description: 'Pages, policies, and navigation issues' },
-  { key: 'informationMismatch', label: 'Information Mismatch', icon: '⚠️', description: 'Contradictions and inconsistencies' },
-  { key: 'productOptimization', label: 'Product Optimization', icon: '📦', description: 'Metadata, specs, and GEO readiness' },
-  { key: 'strategicGrowth', label: 'Strategic Growth', icon: '🚀', description: 'Suggestions only — reviews, schema, domain, and long-term improvements' },
+  { key: 'storeInfrastructure', label: 'Store Infrastructure', description: 'Pages, policies, and navigation issues', accent: '#6366f1' },
+  { key: 'informationMismatch', label: 'Information Mismatch', description: 'Contradictions and inconsistencies', accent: '#f59e0b' },
+  { key: 'productOptimization', label: 'Product Optimization', description: 'Metadata, specs, and GEO readiness', accent: '#22c55e' },
 ];
 
-// Legacy tiers for backward compat with old audit data
-const LEGACY_TIERS = [
-  { key: 'critical', label: 'Critical — This Week', tone: 'critical' as const },
-  { key: 'highPriority', label: 'High Priority — This Month', tone: 'warning' as const },
-  { key: 'strategic', label: 'Strategic — This Quarter', tone: 'success' as const },
-];
+const GROWTH_KEY = 'strategicGrowth';
 
 export const ActionsPage: React.FC = () => {
   const { audit, auditLoading, runFullAudit, shop, refreshData } = useDashboard();
@@ -132,136 +135,159 @@ export const ActionsPage: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [appliedFixes, setAppliedFixes] = useState<Set<string>>(new Set());
 
-  const handleFixClick = (fix: FixPayload) => {
-    setSelectedFix(fix);
-    setModalOpen(true);
-  };
-
-  const handleFixApplied = (fix: FixPayload) => {
-    setAppliedFixes(prev => new Set([...prev, fixKey(fix)]));
-  };
+  const handleFixClick = (fix: FixPayload) => { setSelectedFix(fix); setModalOpen(true); };
+  const handleFixApplied = (fix: FixPayload) => { setAppliedFixes(prev => new Set([...prev, fixKey(fix)])); };
 
   if (!audit && !auditLoading) {
     return (
-      <Page title="Diagnostics & Action Plan">
+      <Page title="Actions">
         <Card>
-          <EmptyState
-            heading="No action plan available"
-            image=""
-            action={{ content: 'Run GEO Audit', onAction: runFullAudit }}
-          >
-            <p>Run a full GEO audit to generate a prioritized action plan for your store.</p>
-          </EmptyState>
+          <Box padding="800">
+            <BlockStack gap="300" align="center" inlineAlign="center">
+              <div style={{
+                width: 56, height: 56, borderRadius: 14,
+                background: 'var(--p-color-bg-fill-secondary)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 24,
+              }}>⚡</div>
+              <Text as="p" variant="headingSm">No action plan available</Text>
+              <Text as="p" variant="bodySm" tone="subdued">
+                Run a full GEO audit to generate a prioritized action plan.
+              </Text>
+              <Box paddingBlockStart="200">
+                <Button variant="primary" size="large" onClick={runFullAudit}>Run GEO Audit</Button>
+              </Box>
+            </BlockStack>
+          </Box>
         </Card>
       </Page>
     );
   }
 
-  // Support new (diagnosticsAndActionPlan) and old (actionPlan) formats
   const diagPlan = audit?.diagnosticsAndActionPlan;
-  const legacyPlan = audit?.actionPlan;
-  const isNewFormat = !!diagPlan;
+  const severityOrder: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 
-  const getAllItems = (): ActionItem[] => {
-    if (isNewFormat) {
-      return CATEGORIES.flatMap(cat => (diagPlan?.[cat.key] || []) as ActionItem[]);
-    }
-    return LEGACY_TIERS.flatMap(tier => (legacyPlan?.[tier.key] || []) as ActionItem[]);
-  };
-
-  const allItems = getAllItems();
-  const totalFixes = allItems.reduce((s, item) => {
+  const allFixableItems = CATEGORIES.flatMap(cat =>
+    ((diagPlan?.[cat.key] || []) as ActionItem[])
+  );
+  const totalFixes = allFixableItems.reduce((s, item) => {
     const remaining = (item.fixes || []).filter(f => !appliedFixes.has(fixKey(f)));
     return s + remaining.length;
   }, 0);
 
+  // Keywords that indicate a manual-only action (domain, store name, etc.)
+  const MANUAL_KEYWORDS = /\b(domain|\.myshopify|store\s*name|custom\s*domain|brand\s*name|rename\s*store)\b/i;
+
+  const isManualOnly = (item: ActionItem) => {
+    const text = `${item.title} ${item.description} ${item.what || ''}`;
+    // Check if ALL fixes are manual-only types
+    const hasOnlyManualFixes = (item.fixes || []).length > 0 &&
+      (item.fixes || []).every(f => ['store_name', 'shop_policy', 'shop_name'].includes(f.type));
+    return MANUAL_KEYWORDS.test(text) || hasOnlyManualFixes;
+  };
+
+  // Move manual-only items from fixable categories into suggestions
+  const manualItems: ActionItem[] = CATEGORIES.flatMap(cat =>
+    ((diagPlan?.[cat.key] || []) as ActionItem[]).filter(isManualOnly)
+  );
+
+  const growthItems: ActionItem[] = [
+    ...manualItems,
+    ...((diagPlan?.[GROWTH_KEY] || []) as ActionItem[]),
+  ]
+    .slice()
+    .sort((a: ActionItem, b: ActionItem) => (severityOrder[a.severity] ?? 4) - (severityOrder[b.severity] ?? 4));
+
   return (
-    <Page
-      title="Diagnostics & Action Plan"
-      subtitle={`${allItems.length} actions · ${totalFixes} fix${totalFixes !== 1 ? 'es' : ''} remaining`}
-    >
-      <BlockStack gap="600">
+    <Page title="Actions" subtitle={`${totalFixes} fix${totalFixes !== 1 ? 'es' : ''} remaining`}>
+      <BlockStack gap="400">
         {appliedFixes.size > 0 && (
           <Banner tone="success">
             <p>{appliedFixes.size} fix{appliedFixes.size > 1 ? 'es' : ''} applied this session.</p>
           </Banner>
         )}
 
-        {isNewFormat ? (
-          // New format: 4 categories
-          CATEGORIES.map((cat) => {
-            const severityOrder: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
-            const items: ActionItem[] = (diagPlan?.[cat.key] || [])
-              .slice()
-              .sort((a: ActionItem, b: ActionItem) => (severityOrder[a.severity] ?? 4) - (severityOrder[b.severity] ?? 4));
-            const criticalCount = items.filter(i => i.severity === 'CRITICAL').length;
-            const highCount = items.filter(i => i.severity === 'HIGH').length;
-            return (
-              <BlockStack key={cat.key} gap="300">
-                <InlineStack gap="200" blockAlign="center">
-                  <Text as="span" variant="bodyMd">{cat.icon}</Text>
-                  <Text as="h2" variant="headingMd">{cat.label}</Text>
-                  <Badge>{items.length}</Badge>
-                  {criticalCount > 0 && <Badge tone="critical">{criticalCount} critical</Badge>}
-                  {highCount > 0 && <Badge tone="warning">{highCount} high</Badge>}
-                </InlineStack>
-                <Text as="p" variant="bodySm" tone="subdued">{cat.description}</Text>
-                {items.length > 0 ? (
-                  items.map((item, i) => (
-                    <ActionCard
-                      key={i}
-                      item={item}
-                      onFixClick={handleFixClick}
-                      appliedFixes={appliedFixes}
-                      showFixes={cat.key !== 'strategicGrowth'}
-                    />
-                  ))
-                ) : (
-                  <Card>
-                    <Text as="p" variant="bodySm" tone="subdued">No issues found in this category. ✓</Text>
-                  </Card>
-                )}
-                <Divider />
-              </BlockStack>
-            );
-          })
-        ) : (
-          // Legacy format: 3 tiers
-          LEGACY_TIERS.map((tier) => {
-            const items: ActionItem[] = legacyPlan?.[tier.key] || [];
-            return (
-              <BlockStack key={tier.key} gap="300">
-                <InlineStack gap="200" blockAlign="center">
-                  <Text as="h2" variant="headingMd">{tier.label}</Text>
-                  <Badge tone={tier.tone}>{items.length}</Badge>
-                </InlineStack>
-                {items.length > 0 ? (
-                  items.map((item, i) => (
-                    <ActionCard
-                      key={i}
-                      item={item}
-                      onFixClick={handleFixClick}
-                      appliedFixes={appliedFixes}
-                    />
-                  ))
-                ) : (
-                  <Card>
-                    <Text as="p" variant="bodySm" tone="subdued">No actions in this tier.</Text>
-                  </Card>
-                )}
-              </BlockStack>
-            );
-          })
-        )}
+        {/* ── Fixable Categories ── */}
+        {CATEGORIES.map((cat) => {
+          const items: ActionItem[] = (diagPlan?.[cat.key] || [])
+            .filter((item: ActionItem) => !isManualOnly(item))
+            .slice()
+            .sort((a: ActionItem, b: ActionItem) => (severityOrder[a.severity] ?? 4) - (severityOrder[b.severity] ?? 4));
+
+          return (
+            <Card key={cat.key}>
+              <div style={{ borderLeft: `3px solid ${cat.accent}`, paddingLeft: 16, marginLeft: -16 }}>
+                <BlockStack gap="300">
+                  <Text as="h2" variant="headingSm">{cat.label}</Text>
+                  <Text as="p" variant="bodySm" tone="subdued">{cat.description}</Text>
+                  <Divider />
+                  {items.length > 0 ? (
+                    items.map((item, i) => (
+                      <ActionCard key={i} item={item} onFixClick={handleFixClick} appliedFixes={appliedFixes} showFixes />
+                    ))
+                  ) : (
+                    <Box padding="200">
+                      <Text as="p" variant="bodySm" tone="subdued">No issues found ✓</Text>
+                    </Box>
+                  )}
+                </BlockStack>
+              </div>
+            </Card>
+          );
+        })}
+
+        {/* ── Strategic Growth (suggestions — visually distinct) ── */}
+        <div style={{
+          border: '1px dashed var(--p-color-border)',
+          borderRadius: 12,
+          background: 'var(--p-color-bg-surface-secondary)',
+          padding: 20,
+        }}>
+          <BlockStack gap="300">
+            <InlineStack gap="200" blockAlign="center">
+              <Text as="h2" variant="headingSm">Strategic Growth</Text>
+              <Badge tone="info">Suggestions</Badge>
+            </InlineStack>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Long-term improvements — reviews, schema, domain, and growth opportunities. These cannot be auto-fixed.
+            </Text>
+            <Divider />
+            {growthItems.length > 0 ? (
+              growthItems.map((item, i) => (
+                <div key={i} className="axiom-issue-row" style={{
+                  padding: 14, background: 'var(--p-color-bg-surface)',
+                }}>
+                  <InlineStack gap="300" blockAlign="start" wrap={false}>
+                    <div style={{ flexShrink: 0 }}>
+                      <Badge tone={severityTone(item.severity)}>{item.severity || 'INFO'}</Badge>
+                    </div>
+                    <BlockStack gap="100">
+                      <Text as="span" variant="bodySm" fontWeight="semibold">{item.title}</Text>
+                      <Text as="span" variant="bodySm" tone="subdued">{item.description || item.what || ''}</Text>
+                      {(item.impact || item.why) && (
+                        <Text as="span" variant="bodySm" tone="subdued">
+                          <em>Impact: {item.impact || item.why}</em>
+                        </Text>
+                      )}
+                    </BlockStack>
+                  </InlineStack>
+                </div>
+              ))
+            ) : (
+              <Box padding="200">
+                <Text as="p" variant="bodySm" tone="subdued">No suggestions at this time ✓</Text>
+              </Box>
+            )}
+          </BlockStack>
+        </div>
+
+        <Box paddingBlockEnd="800" />
       </BlockStack>
 
       <FixPreviewModal
-        open={modalOpen}
-        fix={selectedFix}
-        shop={shop}
+        open={modalOpen} fix={selectedFix} shop={shop}
         onClose={() => { setModalOpen(false); setSelectedFix(null); }}
-        onFixed={handleFixApplied}
-        refreshData={refreshData}
+        onFixed={handleFixApplied} refreshData={refreshData}
       />
     </Page>
   );

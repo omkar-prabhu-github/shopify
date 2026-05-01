@@ -1,34 +1,52 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   Page, Card, Text, BlockStack, Box, Banner, Divider, Badge,
-  InlineStack, Button, TextField, Modal, Spinner, EmptyState,
-  Select, InlineGrid, ProgressBar,
+  InlineStack, Button, TextField, Spinner, EmptyState,
+  Select, InlineGrid,
 } from '@shopify/polaris';
 import { useDashboard } from '../DashboardContext';
 import {
-  analyzeBlog, generateBlog, listBlogs,
+  analyzeBlog, generateBlog, listBlogs, publishBlog,
   type BlogArticle, type BlogAnalysis, type GeneratedBlog, type ShopifyBlog,
 } from '../../../api/blogClient';
 import { FixPreviewModal } from '../components/FixPreviewModal';
 import type { FixPayload } from '../../../api/fixClient';
+import { filterAlreadyFixed } from '../../../utils/aiFixRegistry';
 
-// ── Score Badge ──
-function ScoreBadge({ label, score }: { label: string; score: number }) {
-  const tone = score >= 70 ? 'success' : score >= 40 ? 'warning' : 'critical';
+// Helper: normalize tags
+function normTags(tags: any): string[] {
+  if (Array.isArray(tags)) return tags;
+  if (typeof tags === 'string' && tags.trim()) return tags.split(',').map(t => t.trim()).filter(Boolean);
+  return [];
+}
+
+// ── Score Bar ──
+function ScoreBar({ label, score, max = 100 }: { label: string; score: number; max?: number }) {
+  const pct = Math.round((score / max) * 100);
+  const color = pct >= 70 ? 'var(--p-color-bg-fill-success)' :
+                pct >= 40 ? 'var(--p-color-bg-fill-caution)' :
+                'var(--p-color-bg-fill-critical)';
   return (
-    <BlockStack gap="100" align="center" inlineAlign="center">
-      <Text as="span" variant="bodySm" tone="subdued">{label}</Text>
-      <Text as="span" variant="headingMd" fontWeight="bold" tone={tone}>{score}</Text>
-    </BlockStack>
+    <Box>
+      <InlineStack align="space-between">
+        <Text as="span" variant="bodySm">{label}</Text>
+        <Text as="span" variant="bodySm" fontWeight="semibold">{score}/{max}</Text>
+      </InlineStack>
+      <div className="axiom-score-track">
+        <div className="axiom-score-fill" style={{ background: color, width: `${pct}%` }} />
+      </div>
+    </Box>
   );
 }
 
-// ── Blog Analysis Modal ──
-function AnalysisModal({ open, article, shop, onClose }: {
-  open: boolean;
-  article: BlogArticle | null;
+// ── Blog Detail View ──
+function BlogDetail({
+  article, shop, onBack, refreshData,
+}: {
+  article: BlogArticle;
   shop: string;
-  onClose: () => void;
+  onBack: () => void;
+  refreshData?: () => Promise<void>;
 }) {
   const [analysis, setAnalysis] = useState<BlogAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
@@ -37,173 +55,228 @@ function AnalysisModal({ open, article, shop, onClose }: {
   const [fixModalOpen, setFixModalOpen] = useState(false);
   const [appliedFixes, setAppliedFixes] = useState<Set<string>>(new Set());
   const token = sessionStorage.getItem('shopify_token') || '';
-
   const fixKey = (f: FixPayload) => `${f.type}::${f.field}::${f.label}`;
 
   const runAnalysis = useCallback(async () => {
-    if (!article) return;
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
       const result = await analyzeBlog(shop, token, article);
       setAnalysis(result);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); }
   }, [article, shop, token]);
 
-  useEffect(() => {
-    if (open && article && !analysis) {
-      runAnalysis();
-    }
-  }, [open, article]);
+  const enrichedFixes = filterAlreadyFixed(
+    (analysis?.fixes || [])
+      .map(f => ({
+        ...f,
+        resourceId: (f as any).resourceId || (article as any).id || '',
+        resourceTitle: (f as any).resourceTitle || article.title || '',
+      }))
+  ).filter(f => !appliedFixes.has(fixKey(f)));
 
-  const handleClose = () => {
-    setAnalysis(null);
-    setError('');
-    setAppliedFixes(new Set());
-    onClose();
-  };
-
-  const handleFixClick = (fix: FixPayload) => {
-    setSelectedFix(fix);
-    setFixModalOpen(true);
-  };
-
-  const handleFixApplied = (fix: FixPayload) => {
-    setAppliedFixes(prev => new Set([...prev, fixKey(fix)]));
-  };
-
-  // Enrich fixes with article resource info
-  const enrichedFixes = (analysis?.fixes || [])
-    .map(f => ({
-      ...f,
-      resourceId: (f as any).resourceId || article?.id || '',
-      resourceTitle: (f as any).resourceTitle || article?.title || '',
-    }))
-    .filter(f => !appliedFixes.has(fixKey(f)));
+  const tags = normTags(article.tags);
+  const wordCount = article.body ? article.body.split(/\s+/).filter(Boolean).length : 0;
 
   return (
-    <>
-      <Modal open={open} onClose={handleClose} title={`Analysis: ${article?.title || ''}`} large>
-        <Modal.Section>
-          {loading && (
-            <BlockStack gap="300" align="center" inlineAlign="center">
-              <Spinner size="large" />
-              <Text as="p" variant="bodySm">Analyzing article with Gemma 4…</Text>
-            </BlockStack>
-          )}
+    <Page title={article.title} backAction={{ onAction: onBack }}>
+      <BlockStack gap="400">
 
-          {error && <Banner tone="critical"><p>{error}</p></Banner>}
-
-          {analysis && !loading && (
-            <BlockStack gap="400">
-              {/* Score Cards */}
-              <InlineGrid columns={4} gap="300">
-                <Card>
-                  <ScoreBadge label="Overall" score={analysis.overallScore} />
-                </Card>
-                <Card>
-                  <ScoreBadge label="SEO" score={analysis.seoScore} />
-                </Card>
-                <Card>
-                  <ScoreBadge label="Readability" score={analysis.readabilityScore} />
-                </Card>
-                <Card>
-                  <ScoreBadge label="GEO" score={analysis.geoScore} />
-                </Card>
-              </InlineGrid>
-
-              <Text as="p" variant="bodySm" tone="subdued">Word count: {analysis.wordCount}</Text>
-
-              <Divider />
-
-              {/* Issues */}
-              {analysis.issues.length > 0 && (
-                <BlockStack gap="200">
-                  <Text as="h3" variant="headingSm">Issues Found</Text>
-                  {analysis.issues.map((issue, i) => (
-                    <Box key={i} background="bg-surface-critical" padding="200" borderRadius="200">
-                      <Text as="p" variant="bodySm">{issue}</Text>
-                    </Box>
-                  ))}
-                </BlockStack>
-              )}
-
-              {/* Suggestions */}
-              {analysis.suggestions.length > 0 && (
-                <BlockStack gap="200">
-                  <Text as="h3" variant="headingSm">Suggestions</Text>
-                  {analysis.suggestions.map((s, i) => (
-                    <Box key={i} background="bg-surface-success" padding="200" borderRadius="200">
-                      <Text as="p" variant="bodySm">{s}</Text>
-                    </Box>
-                  ))}
-                </BlockStack>
-              )}
-
-              {/* Fixes */}
-              {enrichedFixes.length > 0 && (
+        {/* Article Info */}
+        <Card>
+          <BlockStack gap="300">
+            <InlineStack gap="200" blockAlign="center" wrap>
+              <Badge>{article.blog}</Badge>
+              <span className="axiom-dot" />
+              <Text as="span" variant="bodySm" tone="subdued">By {article.author}</Text>
+              {article.published_at && (
                 <>
-                  <Divider />
-                  <BlockStack gap="200">
-                    <InlineStack gap="200" blockAlign="center">
-                      <Text as="h3" variant="headingSm">One-Click Fixes</Text>
-                      <Badge tone="info">{enrichedFixes.length}</Badge>
-                    </InlineStack>
-                    {enrichedFixes.map((fix, i) => (
-                      <Box key={i} background="bg-surface-info" padding="200" borderRadius="200">
-                        <InlineStack align="space-between" blockAlign="center">
-                          <BlockStack gap="050">
-                            <Text as="span" variant="bodySm" fontWeight="semibold">{fix.label}</Text>
-                            <Text as="span" variant="bodySm" tone="subdued">
-                              {fix.type.replace(/_/g, ' ')} · {fix.field}
-                            </Text>
-                          </BlockStack>
-                          <Button size="slim" variant="primary" onClick={() => handleFixClick(fix)}>
-                            Preview &amp; Fix
-                          </Button>
-                        </InlineStack>
-                      </Box>
-                    ))}
-                  </BlockStack>
+                  <span className="axiom-dot" />
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    {new Date(article.published_at).toLocaleDateString()}
+                  </Text>
                 </>
               )}
+              <span className="axiom-dot" />
+              <Text as="span" variant="bodySm">{wordCount} words</Text>
+              <span className="axiom-dot" />
+              <Badge tone={article.published_at ? 'success' : undefined}>
+                {article.published_at ? 'Published' : 'Draft'}
+              </Badge>
+            </InlineStack>
 
-              {appliedFixes.size > 0 && (
-                <Banner tone="success">
-                  <p>{appliedFixes.size} fix{appliedFixes.size > 1 ? 'es' : ''} applied.</p>
-                </Banner>
-              )}
+            {tags.length > 0 && (
+              <>
+                <Divider />
+                <InlineStack gap="100" wrap>
+                  {tags.map((tag, i) => <Badge key={i}>{tag}</Badge>)}
+                </InlineStack>
+              </>
+            )}
 
-              <InlineStack align="end">
-                <Button onClick={runAnalysis} loading={loading}>Re-analyze</Button>
-              </InlineStack>
-            </BlockStack>
-          )}
-        </Modal.Section>
-      </Modal>
+            {article.body && (
+              <>
+                <Divider />
+                <Text as="p" variant="bodySm" tone="subdued">
+                  {article.body.replace(/<[^>]*>/g, '').slice(0, 300)}{article.body.length > 300 ? '…' : ''}
+                </Text>
+              </>
+            )}
+          </BlockStack>
+        </Card>
+
+        {/* Deep Analysis CTA */}
+        {!analysis && !loading && (
+          <Card>
+            <InlineStack align="space-between" blockAlign="center">
+              <BlockStack gap="100">
+                <Text as="p" variant="headingSm">Blog Analysis</Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Analyze SEO, readability, and GEO optimization with Gemma 4
+                </Text>
+              </BlockStack>
+              <Button variant="primary" onClick={runAnalysis}>Run Analysis</Button>
+            </InlineStack>
+          </Card>
+        )}
+
+        {loading && (
+          <Card>
+            <Box padding="600">
+              <BlockStack gap="200" align="center" inlineAlign="center">
+                <Spinner size="large" />
+                <Text as="p" variant="bodySm">Analyzing with Gemma 4…</Text>
+              </BlockStack>
+            </Box>
+          </Card>
+        )}
+
+        {error && <Banner tone="critical" onDismiss={() => setError('')}><p>{error}</p></Banner>}
+
+        {analysis && !loading && (
+          <>
+            {/* Scores */}
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <InlineStack gap="200" blockAlign="center">
+                    <Text as="h2" variant="headingSm">Analysis Scores</Text>
+                    <Badge tone={
+                      analysis.overallScore >= 70 ? 'success' :
+                      analysis.overallScore >= 40 ? 'warning' : 'critical'
+                    }>{analysis.overallScore}/100</Badge>
+                  </InlineStack>
+                  <Button size="slim" onClick={runAnalysis} loading={loading}>Re-analyze</Button>
+                </InlineStack>
+                <Divider />
+                <InlineGrid columns={3} gap="400">
+                  <ScoreBar label="SEO" score={analysis.seoScore} />
+                  <ScoreBar label="Readability" score={analysis.readabilityScore} />
+                  <ScoreBar label="GEO" score={analysis.geoScore} />
+                </InlineGrid>
+                <Text as="p" variant="bodySm" tone="subdued">Word count: {analysis.wordCount}</Text>
+              </BlockStack>
+            </Card>
+
+            {/* Issues */}
+            {analysis.issues.length > 0 && (
+              <Card>
+                <BlockStack gap="300">
+                  <InlineStack gap="200" blockAlign="center">
+                    <Text as="h2" variant="headingSm">Issues</Text>
+                    <Badge tone="critical">{analysis.issues.length}</Badge>
+                  </InlineStack>
+                  <Divider />
+                  {analysis.issues.map((issue, i) => (
+                    <div key={i} className="axiom-issue-row" style={{
+                      padding: 12, background: 'var(--p-color-bg-surface-critical)',
+                    }}>
+                      <Text as="p" variant="bodySm">{issue}</Text>
+                    </div>
+                  ))}
+                </BlockStack>
+              </Card>
+            )}
+
+            {/* Suggestions */}
+            {analysis.suggestions.length > 0 && (
+              <Card>
+                <BlockStack gap="300">
+                  <Text as="h2" variant="headingSm">Suggestions</Text>
+                  <Divider />
+                  {analysis.suggestions.map((s, i) => (
+                    <div key={i} className="axiom-issue-row" style={{
+                      padding: 12, background: 'var(--p-color-bg-surface-secondary)',
+                    }}>
+                      <Text as="p" variant="bodySm">{s}</Text>
+                    </div>
+                  ))}
+                </BlockStack>
+              </Card>
+            )}
+
+            {analysis.issues.length === 0 && analysis.suggestions.length === 0 && (
+              <Banner tone="success"><p>No issues found — this article is well optimized.</p></Banner>
+            )}
+
+            {/* Fixes */}
+            {enrichedFixes.length > 0 && (
+              <Card>
+                <BlockStack gap="300">
+                  <InlineStack gap="200" blockAlign="center">
+                    <Text as="h2" variant="headingSm">One-Click Fixes</Text>
+                    <Badge tone="info">{enrichedFixes.length}</Badge>
+                  </InlineStack>
+                  <Divider />
+                  {enrichedFixes.map((fix, i) => (
+                    <div key={i} className="axiom-issue-row" style={{
+                      padding: 12, background: 'var(--p-color-bg-surface-secondary)',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Text as="span" variant="bodySm" fontWeight="semibold">{fix.label}</Text>
+                          <div><Text as="span" variant="bodySm" tone="subdued">
+                            {fix.type.replace(/_/g, ' ')} · {fix.field}
+                          </Text></div>
+                        </div>
+                        <div style={{ flexShrink: 0 }}>
+                          <Button size="slim" variant="primary" onClick={() => { setSelectedFix(fix); setFixModalOpen(true); }}>
+                            Preview &amp; Fix
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </BlockStack>
+              </Card>
+            )}
+
+            {appliedFixes.size > 0 && (
+              <Banner tone="success">
+                <p>{appliedFixes.size} fix{appliedFixes.size > 1 ? 'es' : ''} applied.</p>
+              </Banner>
+            )}
+          </>
+        )}
+
+        <Box paddingBlockEnd="800" />
+      </BlockStack>
 
       <FixPreviewModal
-        open={fixModalOpen}
-        fix={selectedFix}
-        shop={shop}
+        open={fixModalOpen} fix={selectedFix} shop={shop}
         onClose={() => { setFixModalOpen(false); setSelectedFix(null); }}
-        onFixed={handleFixApplied}
+        onFixed={(fix) => setAppliedFixes(prev => new Set([...prev, fixKey(fix)]))}
         refreshData={refreshData}
       />
-    </>
+    </Page>
   );
 }
 
-// ── Create Blog Modal ──
-function CreateBlogModal({ open, shop, onClose, onCreated }: {
-  open: boolean;
+// ── Create Blog View ──
+function CreateBlogView({ shop, onBack, onCreated }: {
   shop: string;
-  onClose: () => void;
-  onCreated: () => void;
+  onBack: () => void;
+  onCreated: () => Promise<void>;
 }) {
   const [topic, setTopic] = useState('');
   const [blogs, setBlogs] = useState<ShopifyBlog[]>([]);
@@ -214,141 +287,115 @@ function CreateBlogModal({ open, shop, onClose, onCreated }: {
   const [error, setError] = useState('');
   const token = sessionStorage.getItem('shopify_token') || '';
 
-  // Fetch available blogs on open
   useEffect(() => {
-    if (open && blogs.length === 0) {
-      listBlogs(shop, token).then(b => {
-        setBlogs(b);
-        if (b.length > 0) setSelectedBlogId(String(b[0].id));
-      }).catch(() => {});
-    }
-  }, [open]);
+    listBlogs(shop, token).then(b => {
+      setBlogs(b);
+      if (b.length > 0) setSelectedBlogId(String(b[0].id));
+    }).catch(() => {});
+  }, []);
 
   const handleGenerate = async () => {
     if (!topic.trim()) return;
-    setLoading(true);
-    setError('');
-    setGenerated(null);
+    setLoading(true); setError(''); setGenerated(null);
     try {
       const result = await generateBlog(shop, token, topic.trim());
       setGenerated(result.generated);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); }
   };
 
   const handlePublish = async () => {
     if (!generated || !selectedBlogId) return;
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
-      const result = await generateBlog(shop, token, topic.trim(), Number(selectedBlogId));
+      const result = await publishBlog(shop, token, Number(selectedBlogId), generated);
       if (result.published) {
         setPublished(true);
-        setTimeout(() => {
-          handleClose();
-          onCreated();
-        }, 1500);
-      } else if (result.publishError) {
-        setError(`Publish failed: ${result.publishError}`);
+        // First refresh data (waits for re-extraction), then navigate back
+        await onCreated();
+        setTimeout(() => onBack(), 800);
       }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleClose = () => {
-    setTopic('');
-    setGenerated(null);
-    setPublished(false);
-    setError('');
-    onClose();
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); }
   };
 
   return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      title="Create New Blog Post"
-      primaryAction={
-        generated
-          ? { content: published ? '✓ Published!' : 'Publish as Draft', onAction: handlePublish, loading, disabled: published || !selectedBlogId }
-          : { content: 'Generate', onAction: handleGenerate, loading, disabled: !topic.trim() }
-      }
-      secondaryActions={[{ content: 'Cancel', onAction: handleClose }]}
-      large
-    >
-      <Modal.Section>
-        <BlockStack gap="400">
-          {!generated ? (
-            <>
-              <TextField
-                label="Blog Topic"
-                value={topic}
-                onChange={setTopic}
-                placeholder="e.g., Best snowboards for beginners in 2026"
-                autoComplete="off"
-                helpText="Describe the topic — Gemma 4 will generate a complete GEO-optimized blog post"
-              />
-
-              {blogs.length > 0 && (
-                <Select
-                  label="Publish to Blog"
-                  options={blogs.map(b => ({ label: b.title, value: String(b.id) }))}
-                  value={selectedBlogId}
-                  onChange={setSelectedBlogId}
-                />
-              )}
-
-              {loading && (
-                <BlockStack gap="200" align="center" inlineAlign="center">
-                  <Spinner size="large" />
-                  <Text as="p" variant="bodySm">Generating blog post with Gemma 4… This may take a minute.</Text>
-                </BlockStack>
-              )}
-            </>
-          ) : (
-            <>
-              {published && <Banner tone="success"><p>Blog post published as draft! You can edit it in Shopify.</p></Banner>}
-
+    <Page title="Create New Blog Post" backAction={{ onAction: onBack }}>
+      <BlockStack gap="400">
+        {!generated ? (
+          <>
+            <Card>
+              <BlockStack gap="300">
+                <TextField label="Blog Topic" value={topic} onChange={setTopic}
+                  placeholder="e.g., Best snowboards for beginners in 2026" autoComplete="off"
+                  helpText="Describe the topic — Gemma 4 will generate a complete GEO-optimized blog post" />
+                {blogs.length > 0 && (
+                  <Select label="Publish to Blog"
+                    options={blogs.map(b => ({ label: b.title, value: String(b.id) }))}
+                    value={selectedBlogId} onChange={setSelectedBlogId} />
+                )}
+              </BlockStack>
+            </Card>
+            <InlineStack align="end">
+              <Button variant="primary" size="large" onClick={handleGenerate}
+                loading={loading} disabled={!topic.trim()}>
+                Generate Blog Post
+              </Button>
+            </InlineStack>
+            {loading && (
+              <Card>
+                <Box padding="600">
+                  <BlockStack gap="200" align="center" inlineAlign="center">
+                    <Spinner size="large" />
+                    <Text as="p" variant="bodySm">Generating with Gemma 4… This may take a minute.</Text>
+                  </BlockStack>
+                </Box>
+              </Card>
+            )}
+          </>
+        ) : (
+          <>
+            {published && <Banner tone="success"><p>Blog post published successfully!</p></Banner>}
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">{generated.title}</Text>
+                <InlineStack gap="100" wrap>
+                  {generated.tags.map((tag, i) => <Badge key={i}>{tag}</Badge>)}
+                </InlineStack>
+                <Text as="p" variant="bodySm" tone="subdued">{generated.metaDescription}</Text>
+              </BlockStack>
+            </Card>
+            <Card>
+              <BlockStack gap="200">
+                <Text as="h2" variant="headingSm">Article Preview</Text>
+                <Divider />
+                <div style={{ fontSize: 14, lineHeight: 1.8, color: 'var(--p-color-text)' }}
+                  dangerouslySetInnerHTML={{ __html: generated.bodyHtml }} />
+              </BlockStack>
+            </Card>
+            {!published && (
               <Card>
                 <BlockStack gap="300">
-                  <Text as="h2" variant="headingMd">{generated.title}</Text>
-                  <InlineStack gap="200" wrap>
-                    {generated.tags.map((tag, i) => (
-                      <Badge key={i}>{tag}</Badge>
-                    ))}
+                  {blogs.length > 0 && (
+                    <Select label="Publish to Blog"
+                      options={blogs.map(b => ({ label: b.title, value: String(b.id) }))}
+                      value={selectedBlogId} onChange={setSelectedBlogId} />
+                  )}
+                  <InlineStack align="end">
+                    <Button variant="primary" size="large" onClick={handlePublish}
+                      loading={loading} disabled={!selectedBlogId}>
+                      Publish Now
+                    </Button>
                   </InlineStack>
-                  <Text as="p" variant="bodySm" tone="subdued">{generated.metaDescription}</Text>
-                  <Divider />
-                  <Box padding="300" borderRadius="200" background="bg-surface-secondary">
-                    <div
-                      style={{ fontSize: 14, lineHeight: 1.7 }}
-                      dangerouslySetInnerHTML={{ __html: generated.bodyHtml }}
-                    />
-                  </Box>
                 </BlockStack>
               </Card>
-
-              {blogs.length > 0 && !published && (
-                <Select
-                  label="Publish to Blog"
-                  options={blogs.map(b => ({ label: b.title, value: String(b.id) }))}
-                  value={selectedBlogId}
-                  onChange={setSelectedBlogId}
-                />
-              )}
-            </>
-          )}
-
-          {error && <Banner tone="critical"><p>{error}</p></Banner>}
-        </BlockStack>
-      </Modal.Section>
-    </Modal>
+            )}
+          </>
+        )}
+        {error && <Banner tone="critical" onDismiss={() => setError('')}><p>{error}</p></Banner>}
+        <Box paddingBlockEnd="800" />
+      </BlockStack>
+    </Page>
   );
 }
 
@@ -356,87 +403,107 @@ function CreateBlogModal({ open, shop, onClose, onCreated }: {
 export const BlogsPage: React.FC = () => {
   const { data, shop, refreshData } = useDashboard();
   const blogContent: BlogArticle[] = data?.blog_content || [];
-
-  const [analysisOpen, setAnalysisOpen] = useState(false);
   const [selectedArticle, setSelectedArticle] = useState<BlogArticle | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [createMode, setCreateMode] = useState(false);
 
-  const handleAnalyze = (article: BlogArticle) => {
-    setSelectedArticle(article);
-    setAnalysisOpen(true);
-  };
+  const handleBackFromDetail = React.useCallback(() => {
+    setSelectedArticle(null);
+    refreshData?.();
+  }, [refreshData]);
 
-  const wordCount = (text: string) => text.split(/\s+/).filter(Boolean).length;
+  const handleBackFromCreate = React.useCallback(() => {
+    setCreateMode(false);
+    refreshData?.();
+  }, [refreshData]);
+
+  const handleCreated = React.useCallback(async () => {
+    await refreshData?.();
+  }, [refreshData]);
+
+  if (selectedArticle) {
+    return <BlogDetail article={selectedArticle} shop={shop}
+      onBack={handleBackFromDetail} refreshData={refreshData} />;
+  }
+
+  if (createMode) {
+    return <CreateBlogView shop={shop} onBack={handleBackFromCreate}
+      onCreated={handleCreated} />;
+  }
 
   return (
-    <Page
-      title="Blog Management"
-      subtitle={`${blogContent.length} article${blogContent.length !== 1 ? 's' : ''} found`}
-      primaryAction={{ content: '+ Create New Blog', onAction: () => setCreateOpen(true) }}
-    >
-      <BlockStack gap="500">
-
+    <Page title="Blogs" subtitle={`${blogContent.length} article${blogContent.length !== 1 ? 's' : ''}`}
+      primaryAction={{ content: 'Create New Post', onAction: () => setCreateMode(true) }}>
+      <BlockStack gap="400">
         {blogContent.length === 0 ? (
           <Card>
-            <EmptyState
-              heading="No blog articles found"
-              image=""
-              action={{ content: 'Create Your First Blog Post', onAction: () => setCreateOpen(true) }}
-            >
-              <p>Use AI to generate GEO-optimized blog content for your store.</p>
-            </EmptyState>
+            <Box padding="800">
+              <BlockStack gap="300" align="center" inlineAlign="center">
+                <div style={{
+                  width: 56, height: 56, borderRadius: 14,
+                  background: 'var(--p-color-bg-fill-secondary)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 24,
+                }}>📝</div>
+                <Text as="p" variant="headingSm">No blog articles found</Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Use AI to generate GEO-optimized blog content for your store.
+                </Text>
+                <Box paddingBlockStart="200">
+                  <Button variant="primary" size="large" onClick={() => setCreateMode(true)}>
+                    Create Your First Blog Post
+                  </Button>
+                </Box>
+              </BlockStack>
+            </Box>
           </Card>
         ) : (
-          <BlockStack gap="300">
+          <div className="axiom-stagger">
             {blogContent.map((article, i) => {
-              const wc = wordCount(article.body || '');
-              const wTone = wc >= 800 ? 'success' : wc >= 300 ? 'warning' : 'critical';
+              const wc = article.body ? article.body.split(/\s+/).filter(Boolean).length : 0;
+              const wTone = wc >= 800 ? 'success' as const : wc >= 300 ? 'warning' as const : 'critical' as const;
+              const tags = normTags(article.tags);
+
               return (
-                <Card key={i}>
-                  <InlineStack align="space-between" blockAlign="center" wrap>
-                    <BlockStack gap="100">
-                      <InlineStack gap="200" blockAlign="center">
+                <div key={i} className="axiom-card-interactive" onClick={() => setSelectedArticle(article)}>
+                  <Card>
+                    <InlineStack align="space-between" blockAlign="center">
+                      <BlockStack gap="050">
                         <Text as="span" variant="bodyMd" fontWeight="semibold">{article.title}</Text>
-                        <Badge>{article.blog}</Badge>
-                      </InlineStack>
-                      <InlineStack gap="300">
-                        <Text as="span" variant="bodySm" tone="subdued">By {article.author}</Text>
-                        {article.published_at && (
-                          <Text as="span" variant="bodySm" tone="subdued">
-                            {new Date(article.published_at).toLocaleDateString()}
-                          </Text>
-                        )}
-                        <Badge tone={wTone}>{wc} words</Badge>
-                        {article.tags.length > 0 && (
-                          <Text as="span" variant="bodySm" tone="subdued">{article.tags.length} tags</Text>
-                        )}
-                      </InlineStack>
-                    </BlockStack>
-                    <Button variant="primary" size="slim" onClick={() => handleAnalyze(article)}>
-                      Analyze
-                    </Button>
-                  </InlineStack>
-                </Card>
+                        <InlineStack gap="100" blockAlign="center">
+                          <Badge>{article.blog}</Badge>
+                          <span className="axiom-dot" />
+                          <Text as="span" variant="bodySm" tone="subdued">By {article.author}</Text>
+                          {article.published_at && (
+                            <>
+                              <span className="axiom-dot" />
+                              <Text as="span" variant="bodySm" tone="subdued">
+                                {new Date(article.published_at).toLocaleDateString()}
+                              </Text>
+                            </>
+                          )}
+                          <span className="axiom-dot" />
+                          <Badge tone={wTone}>{wc} words</Badge>
+                          {tags.length > 0 && (
+                            <>
+                              <span className="axiom-dot" />
+                              <Text as="span" variant="bodySm" tone="subdued">{tags.length} tags</Text>
+                            </>
+                          )}
+                        </InlineStack>
+                      </BlockStack>
+                      <Button variant="primary" size="slim"
+                        onClick={(e) => { e.stopPropagation?.(); setSelectedArticle(article); }}>
+                        Analyze
+                      </Button>
+                    </InlineStack>
+                  </Card>
+                </div>
               );
             })}
-          </BlockStack>
+          </div>
         )}
+        <Box paddingBlockEnd="800" />
       </BlockStack>
-
-      <AnalysisModal
-        open={analysisOpen}
-        article={selectedArticle}
-        shop={shop}
-        onClose={() => { setAnalysisOpen(false); setSelectedArticle(null); }}
-      />
-
-      <CreateBlogModal
-        open={createOpen}
-        shop={shop}
-        onClose={() => setCreateOpen(false)}
-        onCreated={() => setRefreshKey(k => k + 1)}
-      />
     </Page>
   );
 };

@@ -4,6 +4,7 @@ import {
 } from '@shopify/polaris';
 import { applyFix } from '../../../api/fixClient';
 import type { FixPayload } from '../../../api/fixClient';
+import { registerAIFix } from '../../../utils/aiFixRegistry';
 
 interface FixPreviewModalProps {
   open: boolean;
@@ -33,19 +34,23 @@ export const FixPreviewModal: React.FC<FixPreviewModalProps> = ({ open, fix, sho
     setResult(null);
     try {
       const token = sessionStorage.getItem('shopify_token') || '';
-      // Use edited value instead of the original proposed value
       const fixToApply = { ...fix, newValue: editedValue };
-      await applyFix(shop, token, fixToApply);
-      setResult({ success: true, message: 'Fix applied successfully! The change is now live on your store.' });
+      const result = await applyFix(shop, token, fixToApply);
+      if (result.manual) {
+        setResult({ success: true, message: result.message || 'This change must be done manually in Shopify Admin.' });
+      } else {
+        setResult({ success: true, message: 'Fix applied successfully! The change is now live on your store.' });
+      }
+      // Register in AI fix registry so this field is never re-suggested
+      registerAIFix(fix.resourceId || '', fix.field || '', fix.label || '');
       onFixed?.(fix);
-      // Silently re-extract store data so all pages reflect the change
-      refreshData?.();
+      if (!result.manual) refreshData?.();
     } catch (err: any) {
       setResult({ success: false, message: err.message || 'Failed to apply fix' });
     } finally {
       setApplying(false);
     }
-  }, [fix, shop, onFixed, editedValue]);
+  }, [fix, shop, onFixed, editedValue, refreshData]);
 
   const handleClose = useCallback(() => {
     setResult(null);
@@ -55,6 +60,7 @@ export const FixPreviewModal: React.FC<FixPreviewModalProps> = ({ open, fix, sho
   if (!fix) return null;
 
   const typeLabel = fix.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const charCount = editedValue.length;
 
   return (
     <Modal
@@ -66,53 +72,71 @@ export const FixPreviewModal: React.FC<FixPreviewModalProps> = ({ open, fix, sho
         onAction: result?.success ? handleClose : handleApply,
         loading: applying,
         disabled: applying,
-        destructive: false,
       }}
       secondaryActions={result?.success ? [] : [{ content: 'Cancel', onAction: handleClose }]}
     >
       <Modal.Section>
         <BlockStack gap="400">
+          {/* Fix metadata */}
           <InlineStack gap="200" blockAlign="center">
             <Badge tone="info">{typeLabel}</Badge>
+            {fix.field && <Badge>{fix.field}</Badge>}
             {fix.resourceTitle && (
               <Text as="span" variant="bodySm" tone="subdued">{fix.resourceTitle}</Text>
             )}
           </InlineStack>
 
-          <Divider />
-
-          {/* Current (read-only) */}
-          <Box background="bg-surface-critical" padding="300" borderRadius="200">
-            <BlockStack gap="200">
-              <Text as="span" variant="headingSm" tone="critical">Current</Text>
+          {/* Diff view */}
+          <div style={{
+            border: '1px solid var(--p-color-border)',
+            borderRadius: 10,
+            overflow: 'hidden',
+          }}>
+            {/* Current */}
+            <div style={{
+              padding: '12px 16px',
+              background: 'var(--p-color-bg-surface-critical)',
+              borderBottom: '1px solid var(--p-color-border)',
+            }}>
+              <Text as="span" variant="bodySm" fontWeight="semibold" tone="critical">Current value</Text>
               <div style={{
                 fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                maxHeight: 160, overflow: 'auto',
+                marginTop: 8, maxHeight: 120, overflow: 'auto',
                 color: 'var(--p-color-text-secondary)',
               }}>
                 {fix.oldValue || '(empty)'}
               </div>
-            </BlockStack>
-          </Box>
+            </div>
 
-          {/* Proposed (editable) */}
-          <Box background="bg-surface-success" padding="300" borderRadius="200">
-            <BlockStack gap="200">
+            {/* Arrow */}
+            <div style={{
+              textAlign: 'center', padding: '4px 0',
+              background: 'var(--p-color-bg-surface-secondary)',
+              fontSize: 12, color: 'var(--p-color-text-subdued)',
+            }}>↓ proposed change</div>
+
+            {/* Proposed */}
+            <div style={{
+              padding: '12px 16px',
+              background: 'var(--p-color-bg-surface-success)',
+            }}>
               <InlineStack align="space-between" blockAlign="center">
-                <Text as="span" variant="headingSm" tone="success">Proposed</Text>
-                <Text as="span" variant="bodySm" tone="subdued">Editable — modify before applying</Text>
+                <Text as="span" variant="bodySm" fontWeight="semibold" tone="success">Proposed value</Text>
+                <Text as="span" variant="bodySm" tone="subdued">{charCount} chars</Text>
               </InlineStack>
-              <TextField
-                label="Proposed value"
-                labelHidden
-                value={editedValue}
-                onChange={setEditedValue}
-                multiline={4}
-                autoComplete="off"
-                disabled={applying || !!result?.success}
-              />
-            </BlockStack>
-          </Box>
+              <div style={{ marginTop: 8 }}>
+                <TextField
+                  label="Proposed value"
+                  labelHidden
+                  value={editedValue}
+                  onChange={setEditedValue}
+                  multiline={4}
+                  autoComplete="off"
+                  disabled={applying || !!result?.success}
+                />
+              </div>
+            </div>
+          </div>
 
           {result && (
             <Banner tone={result.success ? 'success' : 'critical'}>

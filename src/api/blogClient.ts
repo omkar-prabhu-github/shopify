@@ -78,3 +78,26 @@ export async function listBlogs(shop: string, token: string): Promise<ShopifyBlo
   const data = await response.json();
   return data.blogs || [];
 }
+
+export async function publishBlog(
+  shop: string, token: string, blogId: number, generated: GeneratedBlog
+): Promise<{ published: boolean; article?: any }> {
+  const response = await fetch('/api/blog/publish', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Domain': shop,
+      'X-Shopify-Token': token,
+    },
+    body: JSON.stringify({
+      blogId,
+      title: generated.title,
+      bodyHtml: generated.bodyHtml,
+      tags: generated.tags,
+    }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
+}

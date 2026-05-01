@@ -121,6 +121,7 @@ export function transformShopifyData(rawData: any) {
   (rawData?.blogArticles || []).forEach((blog: any) => {
     (blog.articles || []).forEach((article: any) => {
       blog_content.push({
+        id:           article.id,
         blog:         blog.blog_title,
         title:        article.title,
         handle:       article.handle,

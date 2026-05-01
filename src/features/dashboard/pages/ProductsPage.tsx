@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import {
-  Page, Card, Text, BlockStack, Box, TextField, Modal,
+  Page, Card, Text, BlockStack, Box, TextField,
   InlineStack, Badge, Button, Banner, Divider, Spinner,
-  InlineGrid, Layout,
+  InlineGrid,
 } from '@shopify/polaris';
 import { useDashboard } from '../DashboardContext';
 import { fetchProductAnalysis } from '../../../api/auditClient';
 import { FixPreviewModal } from '../components/FixPreviewModal';
 import type { FixPayload } from '../../../api/fixClient';
+import { filterAlreadyFixed } from '../../../utils/aiFixRegistry';
 
 interface Issue {
   severity: string;
@@ -31,35 +32,42 @@ function fixKey(fix: FixPayload): string {
   return `${fix.type}::${fix.resourceId}::${fix.field}::${fix.label}`;
 }
 
-// ── Score Card ──
-function ScoreCard({ label, score, icon }: { label: string; score: number; icon: string }) {
-  const tone = score >= 70 ? 'success' : score >= 40 ? 'warning' : 'critical';
-  const color = score >= 70 ? 'var(--p-color-bg-fill-success)' :
-                score >= 40 ? 'var(--p-color-bg-fill-caution)' :
+function severityTone(s: string): 'critical' | 'warning' | 'info' | 'success' {
+  switch (s?.toUpperCase()) {
+    case 'CRITICAL': return 'critical';
+    case 'HIGH': return 'warning';
+    case 'MEDIUM': return 'info';
+    default: return 'success';
+  }
+}
+
+// ── Score Bar ──
+function ScoreBar({ label, score, max = 100 }: { label: string; score: number; max?: number }) {
+  const pct = Math.round((score / max) * 100);
+  const color = pct >= 70 ? 'var(--p-color-bg-fill-success)' :
+                pct >= 40 ? 'var(--p-color-bg-fill-caution)' :
                 'var(--p-color-bg-fill-critical)';
   return (
-    <Card>
-      <BlockStack gap="100" align="center" inlineAlign="center">
-        <Text as="span" variant="bodySm">{icon}</Text>
-        <Text as="span" variant="bodySm" tone="subdued">{label}</Text>
-        <Text as="span" variant="headingLg" fontWeight="bold" tone={tone}>{score}</Text>
-        <div style={{ width: '100%', height: 4, background: 'var(--p-color-bg-fill-secondary)', borderRadius: 2 }}>
-          <div style={{ height: '100%', borderRadius: 2, background: color, width: `${score}%`, transition: 'width 0.6s' }} />
-        </div>
-      </BlockStack>
-    </Card>
+    <Box>
+      <InlineStack align="space-between">
+        <Text as="span" variant="bodySm">{label}</Text>
+        <Text as="span" variant="bodySm" fontWeight="semibold">{score}</Text>
+      </InlineStack>
+      <div className="axiom-score-track">
+        <div className="axiom-score-fill" style={{ background: color, width: `${pct}%` }} />
+      </div>
+    </Box>
   );
 }
 
-// ── Product Detail Modal ──
-function ProductDetailModal({
-  open, product, shop, policyReady, onClose, appliedFixes, onFixClick, onFixApplied,
+// ── Product Detail View ──
+function ProductDetail({
+  product, shop, policyReady, onBack, appliedFixes, onFixClick, onFixApplied,
 }: {
-  open: boolean;
   product: any;
   shop: string;
   policyReady: boolean;
-  onClose: () => void;
+  onBack: () => void;
   appliedFixes: Set<string>;
   onFixClick: (fix: FixPayload) => void;
   onFixApplied: (fix: FixPayload) => void;
@@ -67,8 +75,6 @@ function ProductDetailModal({
   const [analysis, setAnalysis] = useState<ProductAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  if (!product) return null;
 
   const prices = (product.variants || []).map((v: any) => parseFloat(v.price)).filter((p: number) => !isNaN(p));
   const priceStr = prices.length > 0
@@ -86,218 +92,227 @@ function ProductDetailModal({
     finally { setLoading(false); }
   };
 
-  const enrichedFixes = (analysis?.fixes || []).map(f => ({
-    ...f,
-    resourceId: f.resourceId || product.id,
-    resourceTitle: f.resourceTitle || product.title,
-  })).filter(f => !appliedFixes.has(fixKey(f)));
-
-  const handleClose = () => {
-    setAnalysis(null);
-    setError('');
-    onClose();
-  };
-
-  const severityColor = (s: string) => {
-    switch (s) {
-      case 'CRITICAL': return 'critical';
-      case 'HIGH': return 'warning';
-      case 'MEDIUM': return 'info';
-      default: return 'success';
-    }
-  };
+  const enrichedFixes = filterAlreadyFixed(
+    (analysis?.fixes || []).map(f => ({
+      ...f,
+      resourceId: f.resourceId || product.id,
+      resourceTitle: f.resourceTitle || product.title,
+    }))
+  ).filter(f => !appliedFixes.has(fixKey(f)));
 
   return (
-    <Modal open={open} onClose={handleClose} title={product.title} large>
-      <Modal.Section>
-        <BlockStack gap="400">
-          {/* ── Product Info ── */}
-          <Layout>
-            <Layout.Section variant="oneThird">
-              <BlockStack gap="200">
-                {images.length > 0 ? (
-                  <div style={{ borderRadius: 12, overflow: 'hidden', background: 'var(--p-color-bg-fill-secondary)' }}>
-                    <img src={images[0].url} alt={images[0].altText || product.title} style={{ width: '100%', display: 'block' }} />
-                  </div>
-                ) : (
-                  <Box padding="600" background="bg-surface-secondary" borderRadius="300">
-                    <Text as="p" variant="headingLg" alignment="center">📦</Text>
-                  </Box>
-                )}
-                {images.length > 1 && (
-                  <InlineStack gap="200">
-                    {images.slice(1, 5).map((img: any, i: number) => (
-                      <div key={i} style={{ width: 56, height: 56, borderRadius: 8, overflow: 'hidden', background: 'var(--p-color-bg-fill-secondary)' }}>
-                        <img src={img.url} alt={img.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      </div>
-                    ))}
-                  </InlineStack>
-                )}
-              </BlockStack>
-            </Layout.Section>
+    <Page title={product.title} backAction={{ onAction: onBack }}
+      subtitle={[product.vendor, product.product_type].filter(Boolean).join(' · ')}>
+      <BlockStack gap="400">
 
-            <Layout.Section>
-              <BlockStack gap="200">
-                <InlineStack gap="200">
-                  <Badge tone={product.status === 'ACTIVE' ? 'success' : undefined}>{product.status || 'DRAFT'}</Badge>
-                  {product.vendor && <Badge>{product.vendor}</Badge>}
-                  {product.product_type && <Badge>{product.product_type}</Badge>}
-                </InlineStack>
-
-                <InlineStack gap="400">
-                  <BlockStack gap="050">
-                    <Text as="span" variant="bodySm" tone="subdued">Price</Text>
-                    <Text as="span" variant="headingSm">{priceStr}</Text>
-                  </BlockStack>
-                  <BlockStack gap="050">
-                    <Text as="span" variant="bodySm" tone="subdued">Inventory</Text>
-                    <Text as="span" variant="headingSm">{product.total_inventory ?? 0}</Text>
-                  </BlockStack>
-                  <BlockStack gap="050">
-                    <Text as="span" variant="bodySm" tone="subdued">Images</Text>
-                    <Text as="span" variant="headingSm">{images.length}</Text>
-                  </BlockStack>
-                  <BlockStack gap="050">
-                    <Text as="span" variant="bodySm" tone="subdued">Variants</Text>
-                    <Text as="span" variant="headingSm">{(product.variants || []).length}</Text>
-                  </BlockStack>
-                </InlineStack>
-
-                {product.tags?.length > 0 && (
-                  <InlineStack gap="100" wrap>
-                    {product.tags.map((tag: string, i: number) => (
-                      <Badge key={i} tone="info">{tag}</Badge>
-                    ))}
-                  </InlineStack>
-                )}
-
-                {product.description && (
-                  <Box padding="200" background="bg-surface-secondary" borderRadius="200">
-                    <Text as="p" variant="bodySm">{product.description.slice(0, 300)}{product.description.length > 300 ? '…' : ''}</Text>
-                  </Box>
-                )}
-              </BlockStack>
-            </Layout.Section>
-          </Layout>
-
-          <Divider />
-
-          {/* ── Analysis Section ── */}
-          {!analysis && !loading && (
-            <BlockStack gap="200" align="center" inlineAlign="center">
-              <Button onClick={runAnalysis} disabled={!policyReady} variant="primary" size="large">
-                🔬 Run Deep Analysis
-              </Button>
-              {!policyReady && (
-                <Text as="p" variant="bodySm" tone="subdued">Run a GEO Audit first to enable product analysis</Text>
+        {/* ── Product Info ── */}
+        <Card>
+          <div style={{ display: 'grid', gridTemplateColumns: 'clamp(140px, 25%, 220px) 1fr', gap: 20 }}>
+            {/* Image — compact, 4:3 */}
+            <div style={{
+              borderRadius: 10, overflow: 'hidden', aspectRatio: '3/4',
+              background: 'var(--p-color-bg-surface-secondary)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {images.length > 0 ? (
+                <img src={images[0].url} alt={images[0].altText || product.title}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--p-color-text-subdued)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                  No Image
+                </span>
               )}
-              <Text as="p" variant="bodySm" tone="subdued">
-                Gemma 4 will analyze product data + images for SEO, GEO, content, and visual quality
-              </Text>
+            </div>
+
+            {/* Details */}
+            <BlockStack gap="300">
+              <InlineStack gap="200" blockAlign="center">
+                <Badge tone={product.status === 'ACTIVE' ? 'success' : undefined}>{product.status || 'DRAFT'}</Badge>
+                <Text as="span" variant="headingMd">{priceStr}</Text>
+              </InlineStack>
+
+              <Divider />
+
+              {/* Stats — inline with dots */}
+              <InlineStack gap="200" blockAlign="center" wrap>
+                <Text as="span" variant="bodySm"><strong>{product.total_inventory ?? 0}</strong> inventory</Text>
+                <span className="axiom-dot" />
+                <Text as="span" variant="bodySm"><strong>{(product.variants || []).length}</strong> variants</Text>
+                <span className="axiom-dot" />
+                <Text as="span" variant="bodySm"><strong>{images.length}</strong> images</Text>
+                <span className="axiom-dot" />
+                <Text as="span" variant="bodySm"><strong>{(product.tags || []).length}</strong> tags</Text>
+              </InlineStack>
+
+              {product.tags?.length > 0 && (
+                <>
+                  <Divider />
+                  <InlineStack gap="100" wrap>
+                    {product.tags.map((tag: string, i: number) => <Badge key={i}>{tag}</Badge>)}
+                  </InlineStack>
+                </>
+              )}
+
+              {product.description && (
+                <>
+                  <Divider />
+                  <Text as="p" variant="bodySm" tone="subdued">
+                    {product.description.replace(/\*\*/g, '').replace(/<[^>]*>/g, '').slice(0, 300)}{product.description.length > 300 ? '…' : ''}
+                  </Text>
+                </>
+              )}
             </BlockStack>
-          )}
+          </div>
+        </Card>
 
-          {loading && (
-            <BlockStack gap="200" align="center" inlineAlign="center">
-              <Spinner size="large" />
-              <Text as="p" variant="headingSm">Analyzing with Gemma 4…</Text>
-              <Text as="p" variant="bodySm" tone="subdued">
-                Scanning product data + {images.length} image{images.length !== 1 ? 's' : ''} for issues
-              </Text>
-            </BlockStack>
-          )}
+        {/* Image Thumbnails */}
+        {images.length > 1 && (
+          <Card>
+            <InlineStack gap="200">
+              {images.map((img: any, i: number) => (
+                <div key={i} style={{
+                  width: 52, height: 52, borderRadius: 8, overflow: 'hidden',
+                  background: 'var(--p-color-bg-fill-secondary)', flexShrink: 0,
+                  border: '1px solid var(--p-color-border-secondary)',
+                }}>
+                  <img src={img.url} alt={img.altText || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              ))}
+            </InlineStack>
+          </Card>
+        )}
 
-          {error && <Banner tone="critical" onDismiss={() => setError('')}><p>{error}</p></Banner>}
+        {/* ── Deep Analysis CTA (compact) ── */}
+        {!analysis && !loading && (
+          <Card>
+            <InlineStack align="space-between" blockAlign="center">
+              <BlockStack gap="100">
+                <Text as="p" variant="headingSm">Deep Analysis</Text>
+                <Text as="p" variant="bodySm" tone="subdued">
+                  Analyze SEO, GEO, content quality, and images with Gemma 4
+                </Text>
+              </BlockStack>
+              <Button onClick={runAnalysis} disabled={!policyReady} variant="primary">
+                Run Analysis
+              </Button>
+            </InlineStack>
+          </Card>
+        )}
 
-          {analysis && (
-            <BlockStack gap="400">
-              {/* Score Cards */}
-              <InlineGrid columns={5} gap="200">
-                <Card>
-                  <BlockStack gap="100" align="center" inlineAlign="center">
-                    <Text as="span" variant="bodySm" tone="subdued">Overall</Text>
-                    <Text as="span" variant="headingXl" fontWeight="bold" tone={
-                      analysis.overallScore >= 70 ? 'success' : analysis.overallScore >= 40 ? 'caution' : 'critical'
-                    }>{analysis.overallScore}</Text>
+        {loading && (
+          <Card>
+            <Box padding="600">
+              <BlockStack gap="200" align="center" inlineAlign="center">
+                <Spinner size="large" />
+                <Text as="p" variant="bodySm">Analyzing with Gemma 4…</Text>
+              </BlockStack>
+            </Box>
+          </Card>
+        )}
+
+        {error && <Banner tone="critical" onDismiss={() => setError('')}><p>{error}</p></Banner>}
+
+        {/* ── Analysis Results ── */}
+        {analysis && (
+          <>
+            {/* Scores */}
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack align="space-between" blockAlign="center">
+                  <InlineStack gap="200" blockAlign="center">
+                    <Text as="h2" variant="headingSm">Analysis Scores</Text>
+                    <Badge tone={
+                      analysis.overallScore >= 70 ? 'success' :
+                      analysis.overallScore >= 40 ? 'warning' : 'critical'
+                    }>{analysis.overallScore}/100</Badge>
                     <Badge tone={
                       analysis.riskLevel === 'LOW' ? 'success' :
                       analysis.riskLevel === 'MEDIUM' ? 'warning' : 'critical'
                     }>{analysis.riskLevel}</Badge>
-                  </BlockStack>
-                </Card>
-                <ScoreCard label="SEO" score={analysis.seoScore} icon="🔍" />
-                <ScoreCard label="GEO" score={analysis.geoScore} icon="🌐" />
-                <ScoreCard label="Content" score={analysis.contentScore} icon="📝" />
-                <ScoreCard label="Image" score={analysis.imageScore} icon="📸" />
-              </InlineGrid>
+                  </InlineStack>
+                  <Button size="slim" onClick={runAnalysis} loading={loading}>Re-analyze</Button>
+                </InlineStack>
+                <Divider />
+                <InlineGrid columns={2} gap="400">
+                  <ScoreBar label="SEO" score={analysis.seoScore} />
+                  <ScoreBar label="GEO" score={analysis.geoScore} />
+                  <ScoreBar label="Content" score={analysis.contentScore} />
+                  <ScoreBar label="Image Quality" score={analysis.imageScore} />
+                </InlineGrid>
+              </BlockStack>
+            </Card>
 
-              <Divider />
-
-              {/* All Issues */}
-              {analysis.issues.length > 0 && (
-                <BlockStack gap="200">
+            {/* Issues */}
+            {analysis.issues.length > 0 && (
+              <Card>
+                <BlockStack gap="300">
                   <InlineStack gap="200" blockAlign="center">
-                    <Text as="h3" variant="headingMd">Issues Found</Text>
+                    <Text as="h2" variant="headingSm">Issues</Text>
                     <Badge tone="critical">{analysis.issues.length}</Badge>
                   </InlineStack>
+                  <Divider />
                   {analysis.issues.map((issue, i) => (
-                    <Box key={i} padding="300" borderRadius="200" background={
-                      issue.severity === 'CRITICAL' ? 'bg-surface-critical' :
-                      issue.severity === 'HIGH' ? 'bg-surface-caution' : 'bg-surface-secondary'
-                    }>
-                      <BlockStack gap="100">
-                        <InlineStack gap="200" blockAlign="center">
-                          <Badge tone={severityColor(issue.severity) as any}>{issue.severity}</Badge>
-                          {issue.category && <Badge>{issue.category}</Badge>}
+                    <div key={i} className="axiom-issue-row" style={{
+                      padding: 12,
+                      background: issue.severity === 'CRITICAL' ? 'var(--p-color-bg-surface-critical)' :
+                        issue.severity === 'HIGH' ? 'var(--p-color-bg-surface-caution)' : 'var(--p-color-bg-surface-secondary)',
+                    }}>
+                      <InlineStack gap="300" blockAlign="start" wrap={false}>
+                        <div style={{ flexShrink: 0 }}>
+                          <Badge tone={severityTone(issue.severity)}>{issue.severity}</Badge>
+                        </div>
+                        <BlockStack gap="100">
                           <Text as="span" variant="bodySm" fontWeight="semibold">{issue.title}</Text>
-                        </InlineStack>
-                        <Text as="p" variant="bodySm">{issue.detail}</Text>
-                      </BlockStack>
-                    </Box>
+                          <Text as="span" variant="bodySm" tone="subdued">{issue.detail}</Text>
+                        </BlockStack>
+                      </InlineStack>
+                    </div>
                   ))}
                 </BlockStack>
-              )}
+              </Card>
+            )}
 
-              {analysis.issues.length === 0 && (
-                <Banner tone="success"><p>No issues found. This product is well-optimized!</p></Banner>
-              )}
+            {analysis.issues.length === 0 && (
+              <Banner tone="success"><p>No issues found — this product is well optimized.</p></Banner>
+            )}
 
-              {/* Fixes */}
-              {enrichedFixes.length > 0 && (
-                <>
+            {/* Fixes */}
+            {enrichedFixes.length > 0 && (
+              <Card>
+                <BlockStack gap="300">
+                  <InlineStack gap="200" blockAlign="center">
+                    <Text as="h2" variant="headingSm">One-Click Fixes</Text>
+                    <Badge tone="info">{enrichedFixes.length}</Badge>
+                  </InlineStack>
                   <Divider />
-                  <BlockStack gap="200">
-                    <InlineStack gap="200" blockAlign="center">
-                      <Text as="h3" variant="headingMd">One-Click Fixes</Text>
-                      <Badge tone="info">{enrichedFixes.length}</Badge>
-                    </InlineStack>
-                    {enrichedFixes.map((fix, i) => (
-                      <Box key={i} background="bg-surface-info" padding="200" borderRadius="200">
-                        <InlineStack align="space-between" blockAlign="center">
-                          <BlockStack gap="050">
-                            <Text as="span" variant="bodySm" fontWeight="semibold">{fix.label}</Text>
-                            <Text as="span" variant="bodySm" tone="subdued">
-                              {fix.type.replace(/_/g, ' ')} · {fix.field}
-                            </Text>
-                          </BlockStack>
+                  {enrichedFixes.map((fix, i) => (
+                    <div key={i} className="axiom-issue-row" style={{
+                      padding: 12, background: 'var(--p-color-bg-surface-secondary)',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Text as="span" variant="bodySm" fontWeight="semibold">{fix.label}</Text>
+                          <div><Text as="span" variant="bodySm" tone="subdued">
+                            {fix.type.replace(/_/g, ' ')} · {fix.field}
+                          </Text></div>
+                        </div>
+                        <div style={{ flexShrink: 0 }}>
                           <Button size="slim" variant="primary" onClick={() => onFixClick(fix)}>
                             Preview &amp; Fix
                           </Button>
-                        </InlineStack>
-                      </Box>
-                    ))}
-                  </BlockStack>
-                </>
-              )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </BlockStack>
+              </Card>
+            )}
+          </>
+        )}
 
-              <InlineStack align="end">
-                <Button onClick={runAnalysis} loading={loading}>Re-analyze</Button>
-              </InlineStack>
-            </BlockStack>
-          )}
-        </BlockStack>
-      </Modal.Section>
-    </Modal>
+        <Box paddingBlockEnd="800" />
+      </BlockStack>
+    </Page>
   );
 }
 
@@ -310,16 +325,17 @@ function ProductListCard({ product, onClick }: { product: any; onClick: () => vo
   const img = product.images?.[0]?.url || null;
 
   return (
-    <div onClick={onClick} style={{ cursor: 'pointer' }}>
+    <div className="axiom-card-interactive" onClick={onClick}>
       <Card>
         <InlineStack gap="300" blockAlign="center">
           <div style={{
             width: 48, height: 48, borderRadius: 8, overflow: 'hidden',
             background: 'var(--p-color-bg-fill-secondary)', flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: '1px solid var(--p-color-border-secondary)',
           }}>
             {img ? <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> :
-              <Text as="span" variant="bodyLg">📦</Text>}
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--p-color-text-subdued)', textTransform: 'uppercase' }}>N/A</span>}
           </div>
           <BlockStack gap="050" align="start">
             <InlineStack gap="200" blockAlign="center">
@@ -328,11 +344,14 @@ function ProductListCard({ product, onClick }: { product: any; onClick: () => vo
                 {product.status || 'DRAFT'}
               </Badge>
             </InlineStack>
-            <InlineStack gap="200">
+            <InlineStack gap="100" blockAlign="center">
               {product.vendor && <Text as="span" variant="bodySm" tone="subdued">{product.vendor}</Text>}
+              {product.vendor && <span className="axiom-dot" />}
               <Text as="span" variant="bodySm" fontWeight="semibold">{priceStr}</Text>
+              <span className="axiom-dot" />
               <Text as="span" variant="bodySm" tone="subdued">{product.total_inventory} in stock</Text>
-              <Text as="span" variant="bodySm" tone="subdued">{(product.images || []).length} images</Text>
+              <span className="axiom-dot" />
+              <Text as="span" variant="bodySm" tone="subdued">{(product.images || []).length} img</Text>
             </InlineStack>
           </BlockStack>
         </InlineStack>
@@ -347,24 +366,12 @@ export const ProductsPage: React.FC = () => {
   const catalog = data?.catalog || [];
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
   const [selectedFix, setSelectedFix] = useState<FixPayload | null>(null);
   const [fixModalOpen, setFixModalOpen] = useState(false);
   const [appliedFixes, setAppliedFixes] = useState<Set<string>>(new Set());
 
-  const handleProductClick = (product: any) => {
-    setSelectedProduct(product);
-    setDetailOpen(true);
-  };
-
-  const handleFixClick = (fix: FixPayload) => {
-    setSelectedFix(fix);
-    setFixModalOpen(true);
-  };
-
-  const handleFixApplied = (fix: FixPayload) => {
-    setAppliedFixes(prev => new Set([...prev, fixKey(fix)]));
-  };
+  const handleFixClick = (fix: FixPayload) => { setSelectedFix(fix); setFixModalOpen(true); };
+  const handleFixApplied = (fix: FixPayload) => { setAppliedFixes(prev => new Set([...prev, fixKey(fix)])); };
 
   const filtered = catalog.filter((p: any) => {
     if (!searchQuery) return true;
@@ -372,76 +379,69 @@ export const ProductsPage: React.FC = () => {
     return p.title?.toLowerCase().includes(q) || p.vendor?.toLowerCase().includes(q) || p.product_type?.toLowerCase().includes(q);
   });
 
+  // Keep selectedProduct synced with latest data (after fix + refreshData)
+  React.useEffect(() => {
+    if (selectedProduct && catalog.length > 0) {
+      const fresh = catalog.find((p: any) => p.id === selectedProduct.id);
+      if (fresh && fresh !== selectedProduct) {
+        setSelectedProduct(fresh);
+      }
+    }
+  }, [catalog]);
+
+  const handleBack = React.useCallback(() => {
+    setSelectedProduct(null);
+    refreshData?.();
+  }, [refreshData]);
+
+  if (selectedProduct) {
+    return (
+      <>
+        <ProductDetail product={selectedProduct} shop={shop} policyReady={policyReady}
+          onBack={handleBack} appliedFixes={appliedFixes}
+          onFixClick={handleFixClick} onFixApplied={handleFixApplied} />
+        <FixPreviewModal open={fixModalOpen} fix={selectedFix} shop={shop}
+          onClose={() => { setFixModalOpen(false); setSelectedFix(null); }}
+          onFixed={handleFixApplied} refreshData={refreshData} />
+      </>
+    );
+  }
+
   return (
-    <Page
-      title="Products"
-      subtitle={`${filtered.length} product${filtered.length !== 1 ? 's' : ''} · Click any product for details & deep analysis`}
-      fullWidth
-    >
+    <Page title="Products" subtitle={`${filtered.length} product${filtered.length !== 1 ? 's' : ''}`}>
       <BlockStack gap="400">
         <Card>
-          <TextField
-            label="Search products"
-            labelHidden
-            placeholder="Search by name, vendor, or type…"
-            value={searchQuery}
-            onChange={setSearchQuery}
-            autoComplete="off"
-            clearButton
-            onClearButtonClick={() => setSearchQuery('')}
-          />
+          <TextField label="Search products" labelHidden placeholder="Search by name, vendor, or type…"
+            value={searchQuery} onChange={setSearchQuery} autoComplete="off"
+            clearButton onClearButtonClick={() => setSearchQuery('')} />
         </Card>
 
         {!policyReady && (
-          <Banner tone="warning">
-            <p>Run a GEO Audit from the Overview page first to enable per-product deep analysis.</p>
-          </Banner>
+          <Banner tone="warning"><p>Run a GEO Audit from Overview to enable per-product deep analysis.</p></Banner>
         )}
 
         {appliedFixes.size > 0 && (
-          <Banner tone="success">
-            <p>{appliedFixes.size} fix{appliedFixes.size > 1 ? 'es' : ''} applied this session.</p>
-          </Banner>
+          <Banner tone="success"><p>{appliedFixes.size} fix{appliedFixes.size > 1 ? 'es' : ''} applied this session.</p></Banner>
         )}
 
-        {filtered.length > 0 ? (
-          filtered.map((p: any, i: number) => (
-            <ProductListCard
-              key={p.id || i}
-              product={p}
-              onClick={() => handleProductClick(p)}
-            />
-          ))
-        ) : (
-          <Card>
-            <Box padding="600">
-              <Text as="p" variant="bodyMd" alignment="center" tone="subdued">
-                {searchQuery ? 'No products match your search.' : 'No products found in your store.'}
-              </Text>
-            </Box>
-          </Card>
-        )}
+        <div className="axiom-stagger">
+          {filtered.length > 0 ? (
+            filtered.map((p: any, i: number) => (
+              <ProductListCard key={p.id || i} product={p} onClick={() => setSelectedProduct(p)} />
+            ))
+          ) : (
+            <Card>
+              <Box padding="600">
+                <Text as="p" variant="bodyMd" alignment="center" tone="subdued">
+                  {searchQuery ? 'No products match your search.' : 'No products found in your store.'}
+                </Text>
+              </Box>
+            </Card>
+          )}
+        </div>
+
+        <Box paddingBlockEnd="800" />
       </BlockStack>
-
-      <ProductDetailModal
-        open={detailOpen}
-        product={selectedProduct}
-        shop={shop}
-        policyReady={policyReady}
-        onClose={() => { setDetailOpen(false); setSelectedProduct(null); }}
-        appliedFixes={appliedFixes}
-        onFixClick={handleFixClick}
-        onFixApplied={handleFixApplied}
-      />
-
-      <FixPreviewModal
-        open={fixModalOpen}
-        fix={selectedFix}
-        shop={shop}
-        onClose={() => { setFixModalOpen(false); setSelectedFix(null); }}
-        onFixed={handleFixApplied}
-        refreshData={refreshData}
-      />
     </Page>
   );
 };

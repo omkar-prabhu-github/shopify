@@ -57,6 +57,7 @@ Categorize all issues into:
 4. strategicGrowth: Missing trust signals (reviews), missing schema markup, lack of custom domain.
 
 ### STRICT GUIDELINES & FAIL-SAFES
+ * PLAIN LANGUAGE ONLY: Write ALL user-facing text (titles, descriptions, impacts, threats, opportunities) in simple language a non-technical shop owner can understand. NEVER use terms like: JSON-LD, schema markup, meta tags, Open Graph, structured data, API, endpoint, GID, slug, handle, metafield, canonical, semantic, extraction readiness, citation-ready, justification fragments. Instead use plain equivalents like: "product info", "page setup", "search visibility", "AI-friendly descriptions", "store pages".
  * No Generic Advice: Every tip MUST reference specific keys, values, or strings from the JSON data.
  * Missing Data Protocol: If data is missing, state "DATA MISSING", apply the deduction, and do not hallucinate data.
  * AI-First Mindset: Ask: "Would an AI agent cite this product as a top 3 choice?"
@@ -112,8 +113,6 @@ Required Schema:
 }`;
 
 export async function runGeoAudit(shop, storeData) {
-  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured');
 
   // Prepare data — keep full detail, budget = 250k tokens
   const trimmed = {
@@ -142,6 +141,13 @@ export async function runGeoAudit(shop, storeData) {
     trimmed.products = trimmed.products.slice(0, 30);
   }
 
+  const API_KEYS = [
+    process.env.GEMINI_API_KEY,
+    process.env.GEMINI_API_KEY_FALLBACK,
+  ].filter(Boolean);
+
+  if (API_KEYS.length === 0) throw new Error('No GEMINI_API_KEY configured');
+
   const MODELS = [
     'gemini-3-flash-preview',
     'gemini-2.5-flash',
@@ -150,10 +156,14 @@ export async function runGeoAudit(shop, storeData) {
   let audit = null;
   let lastError = null;
 
-  for (const model of MODELS) {
-    try {
-      console.log(`🤖 Trying model: ${model}`);
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+  // Fallback chain: Primary key + model 1 → Primary key + model 2 → Secondary key + model 1 → Secondary key + model 2
+  for (const apiKey of API_KEYS) {
+    if (audit) break;
+    const keyLabel = apiKey === API_KEYS[0] ? 'primary' : 'fallback';
+    for (const model of MODELS) {
+      try {
+        console.log(`🤖 Trying ${model} (${keyLabel} key)`);
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       const payload = JSON.stringify({
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [
@@ -217,12 +227,13 @@ export async function runGeoAudit(shop, storeData) {
         lastError = err.message;
         continue;
       }
-      throw err; // Re-throw non-transient errors
+        throw err; // Re-throw non-transient errors
+      }
     }
   }
 
   if (!audit) {
-    throw new Error(`All models failed. Last error: ${lastError}`);
+    throw new Error(`All models and API keys failed. Last error: ${lastError}`);
   }
 
   // Save storeContextSynthesis as internal policy
