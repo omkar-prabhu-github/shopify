@@ -1,3 +1,5 @@
+import { checkAuth } from '../utils/authGuard';
+
 export interface BlogArticle {
   blog: string;
   title: string;
@@ -44,6 +46,7 @@ export async function analyzeBlog(shop: string, token: string, article: BlogArti
     body: JSON.stringify({ article }),
   });
 
+  checkAuth(response);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
   return data.analysis;
@@ -62,6 +65,7 @@ export async function generateBlog(
     body: JSON.stringify({ topic, blogId }),
   });
 
+  checkAuth(response);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
   return data;
@@ -75,6 +79,7 @@ export async function listBlogs(shop: string, token: string): Promise<ShopifyBlo
     },
   });
 
+  checkAuth(response);
   const data = await response.json();
   return data.blogs || [];
 }
@@ -97,6 +102,7 @@ export async function publishBlog(
     }),
   });
 
+  checkAuth(response);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
   return data;

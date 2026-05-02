@@ -44,7 +44,7 @@ router.post('/product', async (req, res) => {
     console.log(`🔬 Deep analysis for "${product.title}" → ${analysis.riskLevel} (score: ${analysis.overallScore})`);
     return res.json(analysis);
   } catch (err) {
-    console.error('Gemma 4 audit error:', err.message);
+    console.error('Product analysis error:', err.message);
     return res.status(500).json({ error: 'Product analysis failed: ' + err.message });
   }
 });

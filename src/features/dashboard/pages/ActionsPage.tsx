@@ -41,11 +41,8 @@ function ActionCard({ item, onFixClick, appliedFixes, showFixes = true }: {
   appliedFixes: Set<string>;
   showFixes?: boolean;
 }) {
-  // Types that can't be applied via Shopify API — shown as suggestions only
-  const MANUAL_ONLY_TYPES = new Set(['store_name', 'shop_policy', 'shop_name']);
   const remainingFixes = showFixes
     ? filterAlreadyFixed((item.fixes || [])
-        .filter(f => !MANUAL_ONLY_TYPES.has(f.type))
         .filter(f => !appliedFixes.has(fixKey(f))))
     : [];
   const [open, setOpen] = React.useState(false);
@@ -180,9 +177,9 @@ export const ActionsPage: React.FC = () => {
 
   const isManualOnly = (item: ActionItem) => {
     const text = `${item.title} ${item.description} ${item.what || ''}`;
-    // Check if ALL fixes are manual-only types
+    // Check if ALL fixes are manual-only types (store_name / shop_name only)
     const hasOnlyManualFixes = (item.fixes || []).length > 0 &&
-      (item.fixes || []).every(f => ['store_name', 'shop_policy', 'shop_name'].includes(f.type));
+      (item.fixes || []).every(f => ['store_name', 'shop_name'].includes(f.type));
     return MANUAL_KEYWORDS.test(text) || hasOnlyManualFixes;
   };
 

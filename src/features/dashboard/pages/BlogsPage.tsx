@@ -12,6 +12,7 @@ import {
 import { FixPreviewModal } from '../components/FixPreviewModal';
 import type { FixPayload } from '../../../api/fixClient';
 import { filterAlreadyFixed } from '../../../utils/aiFixRegistry';
+import { friendlyError } from '../../../utils/friendlyError';
 
 // Helper: normalize tags
 function normTags(tags: any): string[] {
@@ -62,7 +63,7 @@ function BlogDetail({
     try {
       const result = await analyzeBlog(shop, token, article);
       setAnalysis(result);
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(friendlyError(err.message)); }
     finally { setLoading(false); }
   }, [article, shop, token]);
 
@@ -132,7 +133,7 @@ function BlogDetail({
               <BlockStack gap="100">
                 <Text as="p" variant="headingSm">Blog Analysis</Text>
                 <Text as="p" variant="bodySm" tone="subdued">
-                  Analyze SEO, readability, and GEO optimization with Gemma 4
+                  Analyze SEO, readability, and GEO optimization with AI
                 </Text>
               </BlockStack>
               <Button variant="primary" onClick={runAnalysis}>Run Analysis</Button>
@@ -145,7 +146,7 @@ function BlogDetail({
             <Box padding="600">
               <BlockStack gap="200" align="center" inlineAlign="center">
                 <Spinner size="large" />
-                <Text as="p" variant="bodySm">Analyzing with Gemma 4…</Text>
+                <Text as="p" variant="bodySm">Analyzing… This may take up to a minute.</Text>
               </BlockStack>
             </Box>
           </Card>
@@ -300,7 +301,7 @@ function CreateBlogView({ shop, onBack, onCreated }: {
     try {
       const result = await generateBlog(shop, token, topic.trim());
       setGenerated(result.generated);
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(friendlyError(err.message)); }
     finally { setLoading(false); }
   };
 
@@ -315,7 +316,7 @@ function CreateBlogView({ shop, onBack, onCreated }: {
         await onCreated();
         setTimeout(() => onBack(), 800);
       }
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(friendlyError(err.message)); }
     finally { setLoading(false); }
   };
 
@@ -328,7 +329,7 @@ function CreateBlogView({ shop, onBack, onCreated }: {
               <BlockStack gap="300">
                 <TextField label="Blog Topic" value={topic} onChange={setTopic}
                   placeholder="e.g., Best snowboards for beginners in 2026" autoComplete="off"
-                  helpText="Describe the topic — Gemma 4 will generate a complete GEO-optimized blog post" />
+                  helpText="Describe the topic — AI will generate a complete GEO-optimized blog post" />
                 {blogs.length > 0 && (
                   <Select label="Publish to Blog"
                     options={blogs.map(b => ({ label: b.title, value: String(b.id) }))}
@@ -347,7 +348,7 @@ function CreateBlogView({ shop, onBack, onCreated }: {
                 <Box padding="600">
                   <BlockStack gap="200" align="center" inlineAlign="center">
                     <Spinner size="large" />
-                    <Text as="p" variant="bodySm">Generating with Gemma 4… This may take a minute.</Text>
+                    <Text as="p" variant="bodySm">Generating… This may take up to a minute.</Text>
                   </BlockStack>
                 </Box>
               </Card>

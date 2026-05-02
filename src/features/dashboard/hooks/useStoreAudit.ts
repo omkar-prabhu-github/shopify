@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { fetchStoreAudit } from '../../../api/auditClient';
+import { friendlyError } from '../../../utils/friendlyError';
 
 const AUDIT_CACHE_KEY = 'axiom_audit';
 
@@ -30,7 +31,7 @@ export function useStoreAudit(shop: string) {
       setPolicyReady(true);
       try { sessionStorage.setItem(AUDIT_CACHE_KEY, JSON.stringify(result)); } catch {}
     } catch (e: any) {
-      setError('Store audit failed: ' + e.message);
+      setError(friendlyError(e.message));
     } finally {
       setLoading(false);
     }

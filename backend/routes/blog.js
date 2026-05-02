@@ -4,7 +4,7 @@ import { getValidToken, normalizeDomain, shopifyRest, httpsRequest } from '../se
 
 const router = express.Router();
 
-// POST /api/blog/analyze — analyze an existing blog article via Gemma 4
+// POST /api/blog/analyze — analyze an existing blog article via AI
 router.post('/analyze', async (req, res) => {
   const shop = req.headers['x-shopify-domain'];
   const reqToken = req.headers['x-shopify-token'];
@@ -25,7 +25,7 @@ router.post('/analyze', async (req, res) => {
   }
 });
 
-// POST /api/blog/generate — generate a new blog article via Gemma 4 & publish to Shopify
+// POST /api/blog/generate — generate a new blog article via AI & publish to Shopify
 router.post('/generate', async (req, res) => {
   const shop = req.headers['x-shopify-domain'];
   const reqToken = req.headers['x-shopify-token'];
@@ -37,7 +37,7 @@ router.post('/generate', async (req, res) => {
   const token = await getValidToken(shop, reqToken);
 
   try {
-    // Step 1: Generate blog content via Gemma 4
+    // Step 1: Generate blog content via AI
     console.log(`✍️ Generating blog: "${topic}" for ${shop}`);
     const generated = await runBlogGeneration(shop, topic);
 

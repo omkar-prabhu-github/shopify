@@ -195,16 +195,72 @@ router.post('/apply', async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields: type, newValue' });
   }
 
-  // ── Special case: store name cannot be changed via API ──
-  if (type === 'store_name' || type === 'shop_policy' || type === 'shop_name') {
-    // Shopify's Shop resource is read-only for the name field.
-    // Return success with instructions to change it manually.
-    console.log(`ℹ️ Store name fix requested: "${newValue}" — must be changed in Shopify Admin`);
-    return res.json({
-      success: true,
-      manual: true,
-      message: `Store name cannot be changed via API. Go to Shopify Admin → Settings → Store details → Store name, and change it to: "${newValue}"`,
-    });
+  // ── Special case: shop_policy — use GraphQL shopPolicyUpdate mutation ──
+  if (type === 'shop_policy') {
+    try {
+      const policyType = req.body.extra?.policyType || resourceId || 'refund_policy';
+      // Map snake_case handle to Shopify's SCREAMING_SNAKE ShopPolicyType enum
+      const POLICY_TYPE_MAP = {
+        'refund_policy': 'REFUND_POLICY',
+        'privacy_policy': 'PRIVACY_POLICY',
+        'terms_of_service': 'TERMS_OF_SERVICE',
+        'shipping_policy': 'SHIPPING_POLICY',
+        'subscription_policy': 'SUBSCRIPTION_POLICY',
+        'contact_information': 'CONTACT_INFORMATION',
+        'legal_notice': 'LEGAL_NOTICE',
+      };
+      const shopifyPolicyType = POLICY_TYPE_MAP[policyType] || policyType.toUpperCase();
+      console.log(`📜 Updating policy: ${policyType} → ${shopifyPolicyType} via GraphQL`);
+
+      const domain = normalizeDomain(shop);
+      const mutation = `mutation shopPolicyUpdate($shopPolicy: ShopPolicyInput!) {
+        shopPolicyUpdate(shopPolicy: $shopPolicy) {
+          shopPolicy { id body type }
+          userErrors { field message }
+        }
+      }`;
+      const variables = {
+        shopPolicy: {
+          type: shopifyPolicyType,
+          body: newValue,
+        },
+      };
+      const bodyStr = JSON.stringify({ query: mutation, variables });
+      const gqlRes = await httpsRequest(`${domain}/admin/api/2024-10/graphql.json`, {
+        method: 'POST',
+        headers: {
+          'X-Shopify-Access-Token': token,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(bodyStr),
+        },
+      }, bodyStr);
+
+      const data = gqlRes.json();
+      const result = data?.data?.shopPolicyUpdate;
+      const userErrors = result?.userErrors || [];
+
+      if (userErrors.length > 0) {
+        const msgs = userErrors.map(e => e.message).join(', ');
+        console.error(`❌ Policy update errors:`, JSON.stringify(userErrors));
+
+        // Shopify locks auto-managed policies — give the user instructions
+        if (msgs.toLowerCase().includes('automatic management')) {
+          const policyName = policyType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          return res.json({
+            success: true,
+            manual: true,
+            message: `Your "${policyName}" is auto-managed by Shopify. To update it: Go to Shopify Admin → Settings → Policies → turn off "Automatically generated" for this policy, then try again.`,
+          });
+        }
+        return res.status(400).json({ error: msgs });
+      }
+
+      console.log(`✅ Policy "${shopifyPolicyType}" updated successfully`);
+      return res.json({ success: true, result: result?.shopPolicy });
+    } catch (err) {
+      console.error(`❌ Policy fix error:`, err.message);
+      return res.status(500).json({ error: err.message });
+    }
   }
 
   let mutationDef = MUTATIONS[type];

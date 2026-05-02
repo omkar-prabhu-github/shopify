@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { fetchProductAnalysis } from '../../../api/auditClient';
+import { friendlyError } from '../../../utils/friendlyError';
 
 export interface ProductAnalysis {
   riskLevel: string;
@@ -29,7 +30,7 @@ export const ProductRow: React.FC<{ product: any; shop: string; policyReady: boo
       const token = sessionStorage.getItem('shopify_token') || '';
       const r = await fetchProductAnalysis(shop, product, token);
       setAnalysis(r); setExpanded(true);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) { setError(friendlyError(e.message)); }
     finally { setLoading(false); }
   };
 

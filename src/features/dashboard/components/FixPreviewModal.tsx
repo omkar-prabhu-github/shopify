@@ -5,6 +5,7 @@ import {
 import { applyFix } from '../../../api/fixClient';
 import type { FixPayload } from '../../../api/fixClient';
 import { registerAIFix } from '../../../utils/aiFixRegistry';
+import { friendlyError } from '../../../utils/friendlyError';
 
 interface FixPreviewModalProps {
   open: boolean;
@@ -46,7 +47,7 @@ export const FixPreviewModal: React.FC<FixPreviewModalProps> = ({ open, fix, sho
       onFixed?.(fix);
       if (!result.manual) refreshData?.();
     } catch (err: any) {
-      setResult({ success: false, message: err.message || 'Failed to apply fix' });
+      setResult({ success: false, message: friendlyError(err.message) });
     } finally {
       setApplying(false);
     }

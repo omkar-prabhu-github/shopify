@@ -1,3 +1,5 @@
+import { checkAuth } from '../utils/authGuard';
+
 export async function fetchStoreAudit(shop: string, token: string) {
   const response = await fetch('/api/audit/store', {
     method: 'POST',
@@ -8,6 +10,7 @@ export async function fetchStoreAudit(shop: string, token: string) {
     },
     body: JSON.stringify({ shop }), // Body mainly just to not be empty
   });
+  checkAuth(response);
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || 'Audit failed');
@@ -25,6 +28,7 @@ export async function fetchProductAnalysis(shop: string, product: any, token: st
     },
     body: JSON.stringify({ shop, product }),
   });
+  checkAuth(response);
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `HTTP ${response.status}`);

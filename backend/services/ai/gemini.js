@@ -51,10 +51,10 @@ Every category starts at 100 points. Deduct points ONLY for explicitly identifie
 * LOW (-2 pts): Minor polish or phrasing.
 
 Categorize all issues into:
-1. storeInfrastructure: Missing essential pages (Contact, About), incomplete return policies, broken navigation.
+1. storeInfrastructure: Missing or incomplete pages (Contact, About, FAQ), missing or broken store policies (privacy policy, refund policy, shipping policy, terms of service), policy placeholders, and navigation issues. ALL policy-related issues MUST go here.
 2. informationMismatch: Contradictions (e.g., product page says "30-Day Returns" but policy says "Final Sale").
 3. productOptimization: Missing specifications, lack of quantitative stats, poor metadata, weak GEO justifiability.
-4. strategicGrowth: Missing trust signals (reviews), missing schema markup, lack of custom domain.
+4. strategicGrowth: Missing trust signals (reviews), lack of custom domain, growth opportunities. Do NOT put policy issues here.
 
 ### STRICT GUIDELINES & FAIL-SAFES
  * PLAIN LANGUAGE ONLY: Write ALL user-facing text (titles, descriptions, impacts, threats, opportunities) in simple language a non-technical shop owner can understand. NEVER use terms like: JSON-LD, schema markup, meta tags, Open Graph, structured data, API, endpoint, GID, slug, handle, metafield, canonical, semantic, extraction readiness, citation-ready, justification fragments. Instead use plain equivalents like: "product info", "page setup", "search visibility", "AI-friendly descriptions", "store pages".
@@ -213,6 +213,12 @@ export async function runGeoAudit(shop, storeData) {
       try {
         const cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
         audit = JSON.parse(cleanText);
+
+        // Strict structural validation: ensure the LLM didn't return an empty/partial shell
+        if (!audit?.executiveSummary?.geoHealthScore || !audit?.actionPlan) {
+          throw new Error('Incomplete JSON structure (missing scores or action plan)');
+        }
+
         console.log(`✅ GEO audit complete with ${model}: score=${audit?.executiveSummary?.geoHealthScore}, grade=${audit?.executiveSummary?.grade}`);
         break; // Success — stop trying models
       } catch (parseErr) {

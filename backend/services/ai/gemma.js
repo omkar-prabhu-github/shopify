@@ -45,7 +45,7 @@ async function fetchImageAsBase64(url) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Product Analysis (Gemma 4 — Multimodal)
+// Product Analysis (Multimodal)
 // ──────────────────────────────────────────────────────────────────────
 
 const PRODUCT_ANALYSIS_SCHEMA = {
@@ -255,7 +255,7 @@ FORMAT: Return ONLY raw valid JSON matching the schema. No markdown, no commenta
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Blog Analysis (Gemma 4)
+// Blog Analysis
 // ──────────────────────────────────────────────────────────────────────
 
 const BLOG_ANALYSIS_SCHEMA = {
@@ -417,7 +417,7 @@ FORMAT: Return ONLY raw valid JSON matching the schema. No markdown, no commenta
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Blog Generation (Gemma 4)
+// Blog Generation
 // ──────────────────────────────────────────────────────────────────────
 
 const BLOG_GENERATION_SCHEMA = {

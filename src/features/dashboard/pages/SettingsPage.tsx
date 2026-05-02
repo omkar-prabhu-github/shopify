@@ -94,16 +94,16 @@ export const SettingsPage: React.FC = () => {
         {/* ── AI Configuration ── */}
         <Card>
           <BlockStack gap="400">
-            <Text as="h2" variant="headingMd">AI Architecture</Text>
+            <Text as="h2" variant="headingMd">AI Engine</Text>
             <Divider />
             <Layout>
               <Layout.Section variant="oneHalf">
                 <Box background="bg-surface-info" padding="400" borderRadius="200">
                   <BlockStack gap="200">
                     <Badge tone="info">Store-Level Audit</Badge>
-                    <Text as="p" variant="headingSm">Gemini 2.5 Flash</Text>
+                    <Text as="p" variant="headingSm">Global Analysis</Text>
                     <Text as="p" variant="bodySm" tone="subdued">
-                      Performs comprehensive GEO health analysis across all 10 principles. Evaluates schema, content quality, trust signals, and competitive positioning.
+                      Performs a comprehensive health check across your entire store — evaluating content quality, trust signals, product info, and how visible your store is to AI assistants.
                     </Text>
                   </BlockStack>
                 </Box>
@@ -112,9 +112,9 @@ export const SettingsPage: React.FC = () => {
                 <Box background="bg-surface-secondary" padding="400" borderRadius="200">
                   <BlockStack gap="200">
                     <Badge>Product-Level Scan</Badge>
-                    <Text as="p" variant="headingSm">Gemma 4 31B</Text>
+                    <Text as="p" variant="headingSm">Deep Analysis</Text>
                     <Text as="p" variant="bodySm" tone="subdued">
-                      Deep scans individual products against store policy for compliance, SEO issues, and content quality. Runs on-demand per product.
+                      Scans individual products for issues with descriptions, images, tags, and pricing. Checks compliance with your store policies and generates one-click fixes.
                     </Text>
                   </BlockStack>
                 </Box>

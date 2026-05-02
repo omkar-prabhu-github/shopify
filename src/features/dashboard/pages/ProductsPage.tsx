@@ -8,6 +8,7 @@ import { useDashboard } from '../DashboardContext';
 import { fetchProductAnalysis } from '../../../api/auditClient';
 import { FixPreviewModal } from '../components/FixPreviewModal';
 import type { FixPayload } from '../../../api/fixClient';
+import { friendlyError } from '../../../utils/friendlyError';
 import { filterAlreadyFixed } from '../../../utils/aiFixRegistry';
 
 interface Issue {
@@ -88,7 +89,7 @@ function ProductDetail({
       const token = sessionStorage.getItem('shopify_token') || '';
       const r = await fetchProductAnalysis(shop, product, token);
       setAnalysis(r);
-    } catch (e: any) { setError(e.message); }
+    } catch (e: any) { setError(friendlyError(e.message)); }
     finally { setLoading(false); }
   };
 
@@ -189,7 +190,7 @@ function ProductDetail({
               <BlockStack gap="100">
                 <Text as="p" variant="headingSm">Deep Analysis</Text>
                 <Text as="p" variant="bodySm" tone="subdued">
-                  Analyze SEO, GEO, content quality, and images with Gemma 4
+                  Analyze SEO, GEO, content quality, and images with AI
                 </Text>
               </BlockStack>
               <Button onClick={runAnalysis} disabled={!policyReady} variant="primary">
@@ -204,7 +205,7 @@ function ProductDetail({
             <Box padding="600">
               <BlockStack gap="200" align="center" inlineAlign="center">
                 <Spinner size="large" />
-                <Text as="p" variant="bodySm">Analyzing with Gemma 4…</Text>
+                <Text as="p" variant="bodySm">Analyzing… This may take up to a minute.</Text>
               </BlockStack>
             </Box>
           </Card>

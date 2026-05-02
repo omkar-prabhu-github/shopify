@@ -17,7 +17,7 @@ import fixRouter from './routes/fix.js';
 import blogRouter from './routes/blog.js';
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
@@ -84,13 +84,22 @@ app.use('/api/audit', aiAuditRouter);
 app.use('/api/fix', fixRouter);
 app.use('/api/blog', blogRouter);
 
-// Catch-all Vite Proxy
-app.use('/', createProxyMiddleware({
-  target: 'http://localhost:5173',
-  changeOrigin: true,
-  ws: true,
-  logLevel: 'silent',
-}));
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.join(__dirname, '../dist');
+  app.use(express.static(distPath));
+
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+} else {
+  // Catch-all Vite Proxy for local development
+  app.use('/', createProxyMiddleware({
+    target: 'http://localhost:5173',
+    changeOrigin: true,
+    ws: true,
+    logLevel: 'silent',
+  }));
+}
 
 app.listen(PORT, () => {
   console.log(`✅ Backend running at http://localhost:${PORT}`);

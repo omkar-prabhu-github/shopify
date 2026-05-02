@@ -135,8 +135,7 @@ export const OverviewPage: React.FC = () => {
             <Box padding="800">
               <BlockStack gap="300" align="center" inlineAlign="center">
                 <Spinner size="large" />
-                <Text as="p" variant="bodyMd">Analyzing your store…</Text>
-                <Text as="p" variant="bodySm" tone="subdued">This may take up to 30 seconds</Text>
+                <Text as="p" variant="bodyMd">Analyzing your store… This may take up to a minute.</Text>
               </BlockStack>
             </Box>
           </Card>

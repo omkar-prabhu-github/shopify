@@ -4,6 +4,7 @@ import { ExtractingView } from './features/extraction/ExtractingView';
 import { DashboardView } from './features/dashboard/DashboardView';
 import { fetchShopifyData } from './lib/shopify';
 import { transformShopifyData } from './lib/transformers';
+import { friendlyError } from './utils/friendlyError';
 
 type ViewState = 'login' | 'extracting' | 'dashboard' | 'error';
 
@@ -36,7 +37,7 @@ function App() {
       setView('dashboard');
     } catch (error: any) {
       console.error("Extraction failed:", error);
-      setErrorMessage(error.message || 'An unknown error occurred during extraction.');
+      setErrorMessage(friendlyError(error.message));
       // If embedded, show dashboard with empty data instead of login page
       if (isEmbedded) {
         setMasterJson(transformShopifyData({}));
@@ -141,11 +142,11 @@ function App() {
             } else {
               // No session — redirect to OAuth
               console.log('❌ No session — redirecting to OAuth...');
-              window.top?.location.assign(`/api/auth?shop=${encodeURIComponent(embeddedShop!)}`);
+              window.open(`/api/auth?shop=${encodeURIComponent(embeddedShop!)}`, '_top');
             }
           })
           .catch(() => {
-            window.top?.location.assign(`/api/auth?shop=${encodeURIComponent(embeddedShop!)}`);
+            window.open(`/api/auth?shop=${encodeURIComponent(embeddedShop!)}`, '_top');
           });
       } else {
         console.warn('⚠️ Embedded but cannot detect shop domain');
