@@ -57,36 +57,29 @@ export async function fetchInternalStoreData(domain, reqToken) {
     safe('redirects.json?limit=250')
   ]);
 
-  // Blogs & Articles
+  // Blogs & Articles — fetch all blogs' articles in PARALLEL (not sequential)
   let blog_content = [];
   try {
     const blogsData = await safe('blogs.json');
-    for (const blog of (blogsData.blogs || [])) {
-      const artData = await safe(`blogs/${blog.id}/articles.json?limit=50`);
-      (artData.articles || []).forEach(a => {
-        blog_content.push({
+    const blogArticlePromises = (blogsData.blogs || []).map(blog =>
+      safe(`blogs/${blog.id}/articles.json?limit=20`).then(artData =>
+        (artData.articles || []).map(a => ({
           blog: blog.title, title: a.title, handle: a.handle, author: a.author,
           tags: a.tags || '', published_at: a.published_at, body: stripHtml(a.body_html || '')
-        });
-      });
-    }
+        }))
+      )
+    );
+    const results = await Promise.all(blogArticlePromises);
+    blog_content = results.flat();
   } catch {}
 
-  // Complex Discounts
+  // Discounts — simplified, skip individual code lookups to save time
   let discounts = [];
   try {
-    for (const rule of (discJ.price_rules || [])) {
-      let codes = [];
-      try {
-        const codeData = await safe(`price_rules/${rule.id}/discount_codes.json`);
-        codes = (codeData.discount_codes || []).map(c => c.code);
-      } catch {}
-      discounts.push({
-        id: rule.id, title: rule.title, value: rule.value, value_type: rule.value_type,
-        target_type: rule.target_type, allocation_method: rule.allocation_method,
-        starts_at: rule.starts_at, ends_at: rule.ends_at, usage_limit: rule.usage_limit, codes
-      });
-    }
+    discounts = (discJ.price_rules || []).map(rule => ({
+      id: rule.id, title: rule.title, value: rule.value, value_type: rule.value_type,
+      target_type: rule.target_type, starts_at: rule.starts_at, ends_at: rule.ends_at,
+    }));
   } catch {}
 
   // Transformer Logic

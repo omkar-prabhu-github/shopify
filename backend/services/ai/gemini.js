@@ -45,10 +45,16 @@ LAYER 4: Competitive Positioning
 ### THE 4 AUDIT CATEGORIES & DEDUCTIVE SCORING (ANTI-HALLUCINATION)
 To ensure stable scoring (scores must NEVER drop after a fix is applied unless new errors are introduced), use Strict Deductive Scoring.
 Every category starts at 100 points. Deduct points ONLY for explicitly identified issues in the JSON:
-* CRITICAL (-20 pts): Causes legal/sales loss or total AI blindness.
-* HIGH (-10 pts): Severely hurts AI visibility.
-* MEDIUM (-5 pts): Conversion friction or missing stats.
-* LOW (-2 pts): Minor polish or phrasing.
+* CRITICAL (-10 pts): Causes legal/sales loss or total AI blindness.
+* HIGH (-6 pts): Severely hurts AI visibility.
+* MEDIUM (-3 pts): Conversion friction or missing stats.
+* LOW (-1 pt): Minor polish or phrasing.
+
+IMPORTANT SCORING RULES:
+- The geoHealthScore is the weighted average of ALL 4 category scores.
+- A brand-new store with default products should score 40-55 (not 10-20). Only stores with severe, active problems (broken policies, contradictory info) should score below 30.
+- Do NOT stack multiple deductions for the same root cause. If a product has no description, that is ONE deduction — do not also deduct for "missing stats", "missing justification", etc. from the same empty description.
+- Focus deductions on ACTIONABLE problems the merchant can fix, not on inherent limitations of a new/small store.
 
 Categorize all issues into:
 1. storeInfrastructure: Missing or incomplete pages (Contact, About, FAQ), missing or broken store policies (privacy policy, refund policy, shipping policy, terms of service), policy placeholders, and navigation issues. ALL policy-related issues MUST go here.
@@ -131,19 +137,18 @@ export async function runGeoAudit(shop, storeData) {
     policies: policies,
     custom_pages: customPages,
     collections: (storeData.collections || []).map(c => ({ title: c.title, description: (c.description || '').slice(0, 300), products_count: c.products_count })),
-    products: (storeData.catalog || []).slice(0, 50).map(p => ({
+    products: (storeData.catalog || []).slice(0, 25).map(p => ({
       title: p.title, handle: p.handle, status: p.status,
-      description: (p.description || '').slice(0, 500),
+      description: (p.description || '').slice(0, 300),
       vendor: p.vendor, product_type: p.product_type,
       tags: p.tags, total_inventory: p.total_inventory,
-      variants: (p.variants || []).map(v => ({ title: v.title, price: v.price, compare_at_price: v.compare_at_price, sku: v.sku, inventory: v.inventory })),
+      variants: (p.variants || []).slice(0, 3).map(v => ({ title: v.title, price: v.price, sku: v.sku })),
       images_count: (p.images || []).length,
       has_alt_text: (p.images || []).every(img => img.altText && img.altText.length > 0),
     })),
-    discounts: (storeData.discounts || []).map(d => ({ title: d.title, value: d.value, value_type: d.value_type, starts_at: d.starts_at, ends_at: d.ends_at })),
-    blog_articles: (storeData.blog_content || []).slice(0, 20).map(b => ({
-      blog: b.blog, title: b.title, author: b.author,
-      tags: b.tags, body_preview: (b.body || '').slice(0, 300),
+    discounts: (storeData.discounts || []).slice(0, 5).map(d => ({ title: d.title, value: d.value, value_type: d.value_type })),
+    blog_articles: (storeData.blog_content || []).slice(0, 10).map(b => ({
+      blog: b.blog, title: b.title, tags: b.tags,
     })),
     redirects_count: (storeData.redirects || []).length,
   };

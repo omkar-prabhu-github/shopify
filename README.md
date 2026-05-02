@@ -1,5 +1,7 @@
 # Axiom — AI-Powered GEO Analyst for Shopify
 
+> **Kasparro Agentic Commerce Hackathon — Track 5: AI Readiness & Store Optimization**
+
 **Axiom** is a production-grade Shopify embedded app that audits, scores, and automatically fixes a merchant's store for **Generative Engine Optimization (GEO)** — the emerging discipline of optimizing e-commerce content so AI assistants (ChatGPT, Gemini, Perplexity, Copilot) recommend your products over competitors.
 
 > **Live Demo:** [https://axiom-tp2a.onrender.com](https://axiom-tp2a.onrender.com)
