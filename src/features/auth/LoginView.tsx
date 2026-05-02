@@ -23,7 +23,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onExtract, error }) => {
     if (!oauthDomain) return;
     let shop = oauthDomain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
     if (!shop.includes('.')) shop = `${shop}.myshopify.com`;
-    window.location.href = `http://localhost:3000/api/auth?shop=${shop}`;
+    window.location.href = `/api/auth?shop=${shop}`;
   };
 
   return (

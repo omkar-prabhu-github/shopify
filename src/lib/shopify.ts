@@ -82,14 +82,14 @@ query GetStoreData {
 `;
 
 export async function fetchShopifyData(domain: string, token: string) {
-  const PROXY             = 'http://localhost:3000/api/shopify';
-  const PROXY_SHOP        = 'http://localhost:3000/api/shopify/shop';
-  const PROXY_POLICIES    = 'http://localhost:3000/api/shopify/policies';
-  const PROXY_ARTICLES    = 'http://localhost:3000/api/shopify/articles';
-  const PROXY_DISCOUNTS   = 'http://localhost:3000/api/shopify/discounts';
-  const PROXY_CUSTOMERS   = 'http://localhost:3000/api/shopify/customers-count';
-  const PROXY_ORDERS      = 'http://localhost:3000/api/shopify/orders-count';
-  const PROXY_REDIRECTS   = 'http://localhost:3000/api/shopify/redirects';
+  const PROXY             = '/api/shopify';
+  const PROXY_SHOP        = '/api/shopify/shop';
+  const PROXY_POLICIES    = '/api/shopify/policies';
+  const PROXY_ARTICLES    = '/api/shopify/articles';
+  const PROXY_DISCOUNTS   = '/api/shopify/discounts';
+  const PROXY_CUSTOMERS   = '/api/shopify/customers-count';
+  const PROXY_ORDERS      = '/api/shopify/orders-count';
+  const PROXY_REDIRECTS   = '/api/shopify/redirects';
 
   const h = {
     'Content-Type': 'application/json',
