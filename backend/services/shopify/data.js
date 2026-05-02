@@ -97,7 +97,12 @@ export async function fetchInternalStoreData(domain, reqToken) {
   };
 
   const native_policies = {};
-  (polJ.policies || []).forEach(p => { if (p.handle) native_policies[p.handle] = stripHtml(p.body || ''); });
+  const rawPolicies = polJ.policies || [];
+  console.log(`📜 Raw policies from Shopify: ${rawPolicies.length} policies found`);
+  rawPolicies.forEach(p => {
+    console.log(`  📜 Policy "${p.handle}": title="${p.title}", body_length=${(p.body || '').length}`);
+    if (p.handle) native_policies[p.handle] = stripHtml(p.body || '');
+  });
 
   const custom_pages = {};
   (gqlData.pages?.edges || []).forEach(e => { if (e.node.handle) custom_pages[e.node.handle] = stripHtml(e.node.body || ''); });

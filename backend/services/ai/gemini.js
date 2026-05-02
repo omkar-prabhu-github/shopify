@@ -114,9 +114,22 @@ Required Schema:
 
 export async function runGeoAudit(shop, storeData) {
 
+  // Debug: log what data we actually received
+  const policies = storeData.store_context?.native_policies || {};
+  const customPages = storeData.store_context?.custom_pages || {};
+  console.log(`📋 Policies received: ${Object.keys(policies).join(', ') || 'NONE'}`);
+  console.log(`📋 Policy lengths: ${Object.entries(policies).map(([k,v]) => `${k}=${(v||'').length}chars`).join(', ')}`);
+  console.log(`📋 Custom pages: ${Object.keys(customPages).join(', ') || 'NONE'}`);
+  console.log(`📋 Blog articles: ${(storeData.blog_content || []).length}`);
+  console.log(`📋 Collections: ${(storeData.collections || []).length}`);
+  console.log(`📋 Products: ${(storeData.catalog || []).length}`);
+
   // Prepare data — keep full detail, budget = 250k tokens
   const trimmed = {
     store: storeData.store_context || {},
+    // Explicitly surface policies at the top level so the AI cannot miss them
+    policies: policies,
+    custom_pages: customPages,
     collections: (storeData.collections || []).map(c => ({ title: c.title, description: (c.description || '').slice(0, 300), products_count: c.products_count })),
     products: (storeData.catalog || []).slice(0, 50).map(p => ({
       title: p.title, handle: p.handle, status: p.status,
@@ -128,7 +141,10 @@ export async function runGeoAudit(shop, storeData) {
       has_alt_text: (p.images || []).every(img => img.altText && img.altText.length > 0),
     })),
     discounts: (storeData.discounts || []).map(d => ({ title: d.title, value: d.value, value_type: d.value_type, starts_at: d.starts_at, ends_at: d.ends_at })),
-    blog_count: (storeData.blog_content || []).length,
+    blog_articles: (storeData.blog_content || []).slice(0, 20).map(b => ({
+      blog: b.blog, title: b.title, author: b.author,
+      tags: b.tags, body_preview: (b.body || '').slice(0, 300),
+    })),
     redirects_count: (storeData.redirects || []).length,
   };
 
