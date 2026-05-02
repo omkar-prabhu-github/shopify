@@ -12,15 +12,19 @@ router.get('/', (req, res) => {
   if (!shop) return res.status(400).json({ error: 'Missing ?shop= parameter' });
 
   const appUrl = (process.env.SHOPIFY_APP_URL || '').trim();
+  const redirectUri = `${appUrl}/api/auth/callback`;
   const nonce = crypto.randomBytes(16).toString('hex');
   const authUrl =
     `https://${shop}/admin/oauth/authorize` +
     `?client_id=${process.env.SHOPIFY_CLIENT_ID}` +
     `&scope=${SCOPES}` +
-    `&redirect_uri=${appUrl}/api/auth/callback` +
+    `&redirect_uri=${redirectUri}` +
     `&state=${nonce}`;
 
   console.log(`🔐 OAuth → ${shop}`);
+  console.log(`🔗 SHOPIFY_APP_URL = "${process.env.SHOPIFY_APP_URL}"`);
+  console.log(`🔗 Trimmed appUrl  = "${appUrl}"`);
+  console.log(`🔗 redirect_uri    = "${redirectUri}"`);
   return res.redirect(authUrl);
 });
 
