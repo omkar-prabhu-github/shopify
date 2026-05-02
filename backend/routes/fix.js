@@ -128,34 +128,34 @@ async function resolveResourceId(resourceId, type, endpoint, token, resourceTitl
 
   const resourceType = type.startsWith('product') ? 'products' : type.startsWith('collection') ? 'collections' : 'pages';
 
-  // Attempt 1: Search by handle
-  gid = await tryQuery(
-    `{ ${resourceType}(first: 1, query: "handle:${handle}") { nodes { id } } }`,
-    (d) => d?.data?.[resourceType]?.nodes?.[0]?.id,
-    `Handle search "${handle}"`
-  );
-  if (gid) { console.log(`✅ Resolved "${handle}" → ${gid}`); return gid; }
-
-  // Attempt 2: Search by title (using resourceTitle from the fix payload)
-  if (resourceTitle) {
-    const escapedTitle = resourceTitle.replace(/"/g, '\\"');
-    gid = await tryQuery(
-      `{ ${resourceType}(first: 1, query: "title:${escapedTitle}") { nodes { id } } }`,
-      (d) => d?.data?.[resourceType]?.nodes?.[0]?.id,
-      `Title search "${resourceTitle}"`
-    );
-    if (gid) { console.log(`✅ Resolved by title "${resourceTitle}" → ${gid}`); return gid; }
+  // If handle is purely numeric, wrap it in a GID
+  if (/^\d+$/.test(handle)) {
+    const Type = type.startsWith('product') ? 'Product' : type.startsWith('collection') ? 'Collection' : 'Page';
+    gid = `gid://shopify/${Type}/${handle}`;
+    console.log(`✅ Constructed GID from numeric ID: ${gid}`);
+    return gid;
   }
 
-  // Attempt 3: Convert camelCase/placeholder to kebab-case handle and try again
-  const kebabHandle = handle.replace(/([a-z])([A-Z])/g, '$1-$2').replace(/ID$/i, '').toLowerCase();
-  if (kebabHandle !== handle.toLowerCase()) {
+  // Attempt 1: Search by handle (useful if AI gives a slug)
+  const cleanHandle = handle.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  gid = await tryQuery(
+    `{ ${resourceType}(first: 1, query: "handle:${cleanHandle}") { nodes { id } } }`,
+    (d) => d?.data?.[resourceType]?.nodes?.[0]?.id,
+    `Handle search "${cleanHandle}"`
+  );
+  if (gid) { console.log(`✅ Resolved handle "${cleanHandle}" → ${gid}`); return gid; }
+
+  // Attempt 2: Search by title (AI often passes the title as resourceId or resourceTitle)
+  const searchTitle = resourceTitle || handle; // Fallback to handle since AI might put title there
+  if (searchTitle) {
+    // Escape quotes for GraphQL
+    const escapedTitle = searchTitle.replace(/"/g, '\\"');
     gid = await tryQuery(
-      `{ ${resourceType}(first: 1, query: "handle:${kebabHandle}") { nodes { id } } }`,
+      `{ ${resourceType}(first: 1, query: "title:\\"${escapedTitle}\\"") { nodes { id } } }`,
       (d) => d?.data?.[resourceType]?.nodes?.[0]?.id,
-      `Kebab handle search "${kebabHandle}"`
+      `Title search "${searchTitle}"`
     );
-    if (gid) { console.log(`✅ Resolved kebab "${kebabHandle}" → ${gid}`); return gid; }
+    if (gid) { console.log(`✅ Resolved by title "${searchTitle}" → ${gid}`); return gid; }
   }
 
   console.warn(`⚠️ Could not resolve "${resourceId}" for type ${type}`);
