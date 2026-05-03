@@ -369,8 +369,8 @@ NODE_ENV=production
 3. **Start Command**: `node backend/server.js`
 4. Set all environment variables in Render dashboard
 5. In Shopify Partner Dashboard:
-   - **App URL**: `https://your-app.onrender.com`
-   - **Allowed redirection URL**: `https://your-app.onrender.com/api/auth/callback`
+   - **App URL**: `https://axiom-dev.tech`
+   - **Allowed redirection URL**: `https://axiom-dev.tech/api/auth/callback`
 
 ---
 
