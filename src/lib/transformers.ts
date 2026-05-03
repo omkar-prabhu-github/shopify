@@ -127,10 +127,10 @@ export function transformShopifyData(rawData: any) {
         blog:         blog.title,
         title:        article.title,
         handle:       article.handle,
-        author:       article.author?.name || '',
+        author:       article.author || '',
         tags:         article.tags  || [],
         published_at: article.publishedAt,
-        body:         stripHtml(article.contentHtml || ''),
+        body:         stripHtml(article.body || ''),
       });
     });
   });

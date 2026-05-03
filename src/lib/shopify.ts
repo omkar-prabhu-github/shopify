@@ -18,10 +18,10 @@ query GetStoreData {
               id
               title
               handle
-              author { name }
+              author
               tags
               publishedAt
-              contentHtml
+              body
             }
           }
         }
