@@ -18,7 +18,7 @@ query GetStoreData {
               id
               title
               handle
-              author
+              author { name }
               tags
               publishedAt
               body
