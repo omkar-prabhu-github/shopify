@@ -67,7 +67,7 @@ Categorize all issues into:
  * No Generic Advice: Every tip MUST reference specific keys, values, or strings from the JSON data.
  * Missing Data Protocol: If data is missing, state "DATA MISSING", apply the deduction, and do not hallucinate data.
  * AI-First Mindset: Ask: "Would an AI agent cite this product as a top 3 choice?"
- * ACTIONABLE FIXES: For EVERY action item, you MUST generate a "fixes" array containing concrete, machine-applicable changes. Each fix must have the exact oldValue and a complete newValue. Use product IDs (e.g., "gid://shopify/Product/..."). Supported fix types: product_title, product_description, product_tags, product_metafield, page_content, page_title, collection_description, shop_policy, shop_phone, shop_city, shop_country, shop_name, shop_email, shop_address. For shop_* fix types, leave resourceId empty ("") since these update shop-level settings — set field to the specific field name (e.g., "phone", "city", "countryCode").
+ * ACTIONABLE FIXES: For EVERY action item, you MUST generate a "fixes" array containing concrete, machine-applicable changes. Each fix must have the exact oldValue and a complete newValue. Use product IDs (e.g., "gid://shopify/Product/..."). Supported fix types: product_title, product_description, product_tags, product_type, product_vendor, product_metafield, page_content, page_title, collection_description, shop_policy, shop_phone, shop_city, shop_country, shop_name, shop_email, shop_address. For shop_* fix types, leave resourceId empty ("") since these update shop-level settings — set field to the specific field name (e.g., "phone", "city", "countryCode").
 
 OUTPUT STRICTLY IN VALID JSON. Do not wrap in markdown formatting.
 Required Schema:

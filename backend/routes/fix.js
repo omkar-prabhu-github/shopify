@@ -16,6 +16,14 @@ const MUTATIONS = {
     query: `mutation($product: ProductUpdateInput!) { productUpdate(product: $product) { product { id tags } userErrors { field message } } }`,
     buildVars: (id, val) => ({ product: { id, tags: Array.isArray(val) ? val : val.split(',').map(t => t.trim()) } }),
   },
+  product_type: {
+    query: `mutation($product: ProductUpdateInput!) { productUpdate(product: $product) { product { id productType } userErrors { field message } } }`,
+    buildVars: (id, val) => ({ product: { id, productType: val } }),
+  },
+  product_vendor: {
+    query: `mutation($product: ProductUpdateInput!) { productUpdate(product: $product) { product { id vendor } userErrors { field message } } }`,
+    buildVars: (id, val) => ({ product: { id, vendor: val } }),
+  },
   product_metafield: {
     query: `mutation($metafields: [MetafieldsSetInput!]!) { metafieldsSet(metafields: $metafields) { metafields { id key value } userErrors { field message } } }`,
     buildVars: (id, val, extra) => ({
