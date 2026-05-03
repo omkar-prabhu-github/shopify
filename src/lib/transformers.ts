@@ -116,19 +116,21 @@ export function transformShopifyData(rawData: any) {
     codes:             d.codes || [],
   }));
 
-  // ── Blog content (REST) ───────────────────────────────────────────────────────
+  // ── Blog content (GraphQL) ────────────────────────────────────────────────────
   const blog_content: any[] = [];
-  (rawData?.blogArticles || []).forEach((blog: any) => {
-    (blog.articles || []).forEach((article: any) => {
+  (rawData?.blogs?.edges || []).forEach((blogEdge: any) => {
+    const blog = blogEdge.node;
+    (blog.articles?.edges || []).forEach((artEdge: any) => {
+      const article = artEdge.node;
       blog_content.push({
         id:           article.id,
-        blog:         blog.blog_title,
+        blog:         blog.title,
         title:        article.title,
         handle:       article.handle,
-        author:       article.author,
+        author:       article.author?.name || '',
         tags:         article.tags  || [],
-        published_at: article.published_at,
-        body:         stripHtml(article.body_html || ''),
+        published_at: article.publishedAt,
+        body:         stripHtml(article.contentHtml || ''),
       });
     });
   });

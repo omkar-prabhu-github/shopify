@@ -94,23 +94,18 @@ router.get('/discounts', async (req, res) => {
   const token = await getValidToken(domain, reqToken);
   try {
     const prData = await shopifyRest(domain, token, 'price_rules.json');
-    const priceRules = prData?.price_rules || [];
-    const discounts = await Promise.all(
-      priceRules.map(async (rule) => {
-        let codes = [];
-        try {
-          const codeData = await shopifyRest(domain, token, `price_rules/${rule.id}/discount_codes.json`);
-          codes = (codeData?.discount_codes || []).map(c => c.code);
-        } catch {}
-        return {
-          id: rule.id, title: rule.title, value: rule.value,
-          value_type: rule.value_type, target_type: rule.target_type,
-          allocation_method: rule.allocation_method,
-          starts_at: rule.starts_at, ends_at: rule.ends_at,
-          usage_limit: rule.usage_limit, codes,
-        };
-      })
-    );
+    const discounts = (prData?.price_rules || []).map((rule) => ({
+      id:                rule.id,
+      title:             rule.title,
+      value:             rule.value,
+      value_type:        rule.value_type,
+      target_type:       rule.target_type,
+      allocation_method: rule.allocation_method,
+      starts_at:         rule.starts_at,
+      ends_at:           rule.ends_at,
+      usage_limit:       rule.usage_limit,
+      codes:             [],
+    }));
     return res.json({ discounts });
   } catch (err) {
     console.warn('Discounts fetch failed:', err.message);
