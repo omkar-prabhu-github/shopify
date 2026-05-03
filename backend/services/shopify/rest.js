@@ -1,7 +1,6 @@
 import https from 'https';
 import { tokenStore } from '../../store.js';
 
-const agent = new https.Agent({ keepAlive: true, maxSockets: 25 });
 
 export function normalizeDomain(domain) {
   let d = domain;
@@ -21,7 +20,6 @@ export function httpsRequest(url, options = {}, body = null) {
       headers:  options.headers || {},
       family:   4,
       timeout:  120000,
-      agent,
     };
 
     const req = https.request(reqOptions, (res) => {

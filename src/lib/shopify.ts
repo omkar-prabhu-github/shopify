@@ -7,27 +7,6 @@ query GetStoreData {
       host
     }
   }
-  blogs(first: 20) {
-    edges {
-      node {
-        title
-        handle
-        articles(first: 50) {
-          edges {
-            node {
-              id
-              title
-              handle
-              author { name }
-              tags
-              publishedAt
-              contentHtml
-            }
-          }
-        }
-      }
-    }
-  }
   pages(first: 20) {
     edges {
       node {
@@ -103,13 +82,14 @@ query GetStoreData {
 `;
 
 export async function fetchShopifyData(domain: string, token: string) {
-  const PROXY           = '/api/shopify';
-  const PROXY_SHOP      = '/api/shopify/shop';
-  const PROXY_POLICIES  = '/api/shopify/policies';
-  const PROXY_DISCOUNTS = '/api/shopify/discounts';
-  const PROXY_CUSTOMERS = '/api/shopify/customers-count';
-  const PROXY_ORDERS    = '/api/shopify/orders-count';
-  const PROXY_REDIRECTS = '/api/shopify/redirects';
+  const PROXY             = '/api/shopify';
+  const PROXY_SHOP        = '/api/shopify/shop';
+  const PROXY_POLICIES    = '/api/shopify/policies';
+  const PROXY_ARTICLES    = '/api/shopify/articles';
+  const PROXY_DISCOUNTS   = '/api/shopify/discounts';
+  const PROXY_CUSTOMERS   = '/api/shopify/customers-count';
+  const PROXY_ORDERS      = '/api/shopify/orders-count';
+  const PROXY_REDIRECTS   = '/api/shopify/redirects';
 
   const h = {
     'Content-Type': 'application/json',
@@ -118,10 +98,11 @@ export async function fetchShopifyData(domain: string, token: string) {
   };
 
   // All fetches in parallel — only GraphQL is fatal
-  const [gqlRes, shopRes, policiesRes, discountsRes, customersRes, ordersRes, redirectsRes] = await Promise.all([
+  const [gqlRes, shopRes, policiesRes, articlesRes, discountsRes, customersRes, ordersRes, redirectsRes] = await Promise.all([
     fetch(PROXY, { method: 'POST', headers: h, body: JSON.stringify({ query: shopifyQuery }) }),
     fetch(PROXY_SHOP,      { method: 'GET', headers: h }),
     fetch(PROXY_POLICIES,  { method: 'GET', headers: h }),
+    fetch(PROXY_ARTICLES,  { method: 'GET', headers: h }),
     fetch(PROXY_DISCOUNTS, { method: 'GET', headers: h }),
     fetch(PROXY_CUSTOMERS, { method: 'GET', headers: h }),
     fetch(PROXY_ORDERS,    { method: 'GET', headers: h }),
@@ -159,8 +140,8 @@ export async function fetchShopifyData(domain: string, token: string) {
     try { return res.ok ? await res.json() : {}; } catch { return {}; }
   };
 
-  const [shopJ, polJ, discJ, custJ, ordJ, redJ] = await Promise.all([
-    safe(shopRes), safe(policiesRes),
+  const [shopJ, polJ, artJ, discJ, custJ, ordJ, redJ] = await Promise.all([
+    safe(shopRes), safe(policiesRes), safe(articlesRes),
     safe(discountsRes), safe(customersRes), safe(ordersRes), safe(redirectsRes),
   ]);
 
@@ -168,6 +149,7 @@ export async function fetchShopifyData(domain: string, token: string) {
     ...gqlData,
     shopDetails:    shopJ?.shop         || {},
     policies:       polJ?.policies      || [],
+    blogArticles:   artJ?.blogs         || [],
     discounts:      discJ?.discounts    || [],
     customersCount: custJ?.count        ?? 0,
     ordersCount:    ordJ?.count         ?? 0,
