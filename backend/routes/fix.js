@@ -330,6 +330,15 @@ router.post('/apply', async (req, res) => {
     }
   }
 
+  // ── Special case: product_image — can't auto-apply without a URL ────────────
+  if (type === 'product_image' || type === 'images_count') {
+    return res.json({
+      success: true,
+      manual: true,
+      message: `Images can't be added automatically — please upload images manually in Shopify Admin → Products → "${resourceTitle || 'the product'}" → Media.`,
+    });
+  }
+
   let mutationDef = MUTATIONS[type];
   if (!mutationDef) {
     return res.status(400).json({ error: `Unknown fix type: ${type}` });
