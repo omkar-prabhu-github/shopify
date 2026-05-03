@@ -263,6 +263,65 @@ router.post('/apply', async (req, res) => {
     }
   }
 
+  // ── Special case: shop_* — use GraphQL shopUpdate mutation ──────────────────
+  if (type === 'shop_phone' || type === 'shop_city' || type === 'shop_country' ||
+      type === 'shop_name'  || type === 'shop_email' || type === 'shop_address' ||
+      type === 'shop_zip'   || type === 'shop_info') {
+    try {
+      const domain = normalizeDomain(shop);
+      const FIELD_MAP = {
+        shop_phone:   'phone',
+        shop_city:    'city',
+        shop_country: 'countryCode',
+        shop_name:    'name',
+        shop_email:   'contactEmail',
+        shop_address: 'address1',
+        shop_zip:     'zip',
+        shop_info:    extra?.field || 'phone',
+      };
+      const fieldKey = FIELD_MAP[type] || extra?.field || 'phone';
+      console.log(`🏪 shopUpdate: field=${fieldKey}, value="${newValue}"`);
+
+      const mutation = `mutation shopUpdate($input: ShopUpdateInput!) {
+        shopUpdate(input: $input) {
+          shop { id name phone city }
+          userErrors { field message }
+        }
+      }`;
+      const variables = { input: { [fieldKey]: newValue } };
+      const bodyStr = JSON.stringify({ query: mutation, variables });
+      const gqlRes = await httpsRequest(`${domain}/admin/api/2024-10/graphql.json`, {
+        method: 'POST',
+        headers: {
+          'X-Shopify-Access-Token': token,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(bodyStr),
+        },
+      }, bodyStr);
+
+      const data = gqlRes.json();
+      const result = data?.data?.shopUpdate;
+      const userErrors = result?.userErrors || [];
+
+      if (!gqlRes.ok) {
+        console.error(`❌ shopUpdate HTTP ${gqlRes.status}:`, JSON.stringify(data));
+        return res.status(gqlRes.status).json({ error: 'Shopify API error', detail: data });
+      }
+
+      if (userErrors.length > 0) {
+        const msgs = userErrors.map(e => e.message).join(', ');
+        console.error(`❌ shopUpdate errors:`, JSON.stringify(userErrors));
+        return res.status(422).json({ error: msgs, userErrors });
+      }
+
+      console.log(`✅ shopUpdate field "${fieldKey}" updated successfully`);
+      return res.json({ success: true, result: result?.shop });
+    } catch (err) {
+      console.error(`❌ shopUpdate error:`, err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   let mutationDef = MUTATIONS[type];
   if (!mutationDef) {
     return res.status(400).json({ error: `Unknown fix type: ${type}` });
