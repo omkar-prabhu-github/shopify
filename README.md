@@ -118,25 +118,25 @@ We scoped aggressively to deliver depth over breadth — a forensic audit engine
 ## Architecture & Technical Design
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Shopify Admin (iframe)                     │
+┌──────────────────────────────────────────────────────────────┐
+│                    Shopify Admin (iframe)                    │
 │  ┌─────────────────────────────────────────────────────────┐ │
-│  │              React + Polaris Frontend                    │ │
+│  │              React + Polaris Frontend                   │ │
 │  │  OverviewPage │ ActionsPage │ ProductsPage │ BlogsPage  │ │
 │  └──────────────────────┬──────────────────────────────────┘ │
 │                         │ Relative API calls (/api/*)        │
-└─────────────────────────┼───────────────────────────────────┘
+└─────────────────────────┼────────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────┐
-│                   Express.js Backend (Node 20)               │
-│                                                              │
-│  ┌──────────┐ ┌──────────┐ ┌────────┐ ┌──────┐ ┌─────────┐ │
-│  │ /api/auth│ │/api/audit│ │/api/fix│ │/api/ │ │/api/blog│ │
-│  │  OAuth   │ │  GEO AI  │ │GraphQL │ │proxy │ │ AI+REST │ │
-│  └────┬─────┘ └────┬─────┘ └───┬────┘ └──┬───┘ └────┬────┘ │
-│       │             │           │         │          │       │
+│                   Express.js Backend (Node 20)              │
+│                                                             │
+│  ┌──────────┐ ┌──────────┐ ┌────────┐ ┌──────┐ ┌─────────┐  │
+│  │ /api/auth│ │/api/audit│ │/api/fix│ │/api/ │ │/api/blog│  │
+│  │  OAuth   │ │  GEO AI  │ │GraphQL │ │proxy │ │ AI+REST │  │
+│  └────┬─────┘ └────┬─────┘ └───┬────┘ └──┬───┘ └────┬────┘  │
+│       │             │           │         │          │      │
 │  ┌────▼─────────────▼───────────▼─────────▼──────────▼────┐ │
-│  │              Service Layer                              │ │
+│  │              Service Layer                             │ │
 │  │  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  │ │
 │  │  │shopify/rest │  │  ai/gemini   │  │  ai/gemma     │  │ │
 │  │  │shopify/data │  │ (Store Audit)│  │(Product/Blog) │  │ │
@@ -414,8 +414,8 @@ NODE_ENV=production
 | Week 2 | Built blog generation + publish pipeline | Extends value beyond audit into content creation |
 | Week 2 | Deductive scoring methodology | Solves LLM score instability; ensures fixes always improve scores |
 | Week 2 | Server-side data fetching | Security requirement: prevents data forgery in audit results |
-| Week 3 | 2-layer API fallback chain | Zero-downtime requirement for live demo reliability |
-| Week 3 | Deployed to Render | Free tier suitable for demo; auto-deploy from GitHub |
+| Week 2 | 2-layer API fallback chain | Zero-downtime requirement for live demo reliability |
+| Week 2 | Deployed to Render | Free tier suitable for demo; auto-deploy from GitHub |
 
 ---
 
