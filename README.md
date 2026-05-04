@@ -4,7 +4,7 @@
 
 **Axiom** is a production-grade Shopify embedded app that audits, scores, and automatically fixes a merchant's store for **Generative Engine Optimization (GEO)** — the emerging discipline of optimizing e-commerce content so AI assistants (ChatGPT, Gemini, Perplexity, Copilot) recommend your products over competitors.
 
-> **Live Demo:** [axiom-dev.tech](https://axiom-dev.tech/)
+> **Live Demo:** [axiom-tp2a.onrender.com](https://axiom-tp2a.onrender.com)
 
 ---
 
