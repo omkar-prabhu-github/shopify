@@ -13,7 +13,7 @@
 [![Gemini](https://img.shields.io/badge/Google%20Gemini-2.5%20Flash-4285F4?logo=google&logoColor=white)](https://ai.google.dev)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-> **Live Demo:** [axiom-dev.tech](https://axiom-dev.tech/)
+> **Live Demo:** [axiom-tp2a.onrender.com](https://axiom-tp2a.onrender.com)
 
 </div>
 
