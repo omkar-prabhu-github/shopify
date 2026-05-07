@@ -11,11 +11,9 @@
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vite.dev)
 [![Polaris](https://img.shields.io/badge/Shopify%20Polaris-13.x-96BF48?logo=shopify&logoColor=white)](https://polaris.shopify.com)
 [![Gemini](https://img.shields.io/badge/Google%20Gemini-2.5%20Flash-4285F4?logo=google&logoColor=white)](https://ai.google.dev)
-[![Gemma](https://img.shields.io/badge/Google%20Gemma-4%2031B-34A853?logo=google&logoColor=white)](https://ai.google.dev)
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-axiom--dev.tech-blueviolet)](https://axiom-dev.tech/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-> **Live Demo:** [axiom-tp2a.onrender.com](https://axiom-tp2a.onrender.com)
+> **Live Demo:** [axiom-dev.tech](https://axiom-dev.tech/)
 
 </div>
 
@@ -30,30 +28,6 @@ Traditional SEO optimizes for search engine crawlers. GEO optimizes for AI assis
 **Most Shopify merchants have zero visibility into how AI perceives their store. Axiom fixes that.**
 
 The platform ingests an entire Shopify store — products, collections, blogs, policies, discounts, and metadata — runs it through a dual-model AI pipeline (Gemini 2.5 Flash + Gemma 4 31B), produces a forensic GEO Health Score, and delivers a one-click fix engine that writes corrections directly back to the Shopify Admin API.
-
----
-
-## 📋 Table of Contents
-
-1. [Problem Statement](#-problem-statement)
-2. [Solution & Product Thinking](#-solution--product-thinking)
-3. [Platform Features](#-platform-features)
-4. [System Architecture](#-system-architecture)
-5. [Technology Stack](#-technology-stack)
-6. [Complete File Structure](#-complete-file-structure)
-7. [The 10 GEO Principles](#-the-10-geo-principles-research-backed)
-8. [AI Pipeline: Dual-Model Strategy](#-ai-pipeline-dual-model-strategy)
-9. [Deep Dive: GEO Audit Engine](#-deep-dive-geo-audit-engine)
-10. [Deep Dive: One-Click Fix Engine](#-deep-dive-one-click-fix-engine)
-11. [Deep Dive: Blog Intelligence Engine](#-deep-dive-blog-intelligence-engine)
-12. [Deep Dive: Prompting & Output Engineering](#-deep-dive-prompting--output-engineering)
-13. [Security & Authentication](#-security--authentication)
-14. [Shopify API Integration](#-shopify-api-integration)
-15. [Creating the Shopify App & Permissions](#-creating-the-shopify-app--permissions)
-16. [Environment Configuration](#-environment-configuration)
-17. [Running the Application](#-running-the-application)
-18. [Production Deployment](#-production-deployment)
-19. [Design Decisions & Tradeoffs](#-design-decisions--tradeoffs)
 
 ---
 
@@ -145,7 +119,7 @@ Axiom is a decoupled, three-tier system with a strict boundary between its AI re
 +------------------------------------------------+
 |       Shopify Admin (Browser / iframe)          |
 |                                                 |
-|  +-------------------------------------------+ |
+|  +-------------------------------------------+  |
 |  |    React + Polaris Frontend  (Vite 8)      | |
 |  |                                            | |
 |  |  LoginView -> ExtractingView -> AppShell   | |
@@ -154,19 +128,19 @@ Axiom is a decoupled, three-tier system with a strict boundary between its AI re
 |  |  | Overview | Actions  | Products | Blogs| | |
 |  |  | GEO gauge| act.plan | 15 tests | AIgen| | |
 |  |  +----------+----------+----------+------+ | |
-|  |      DashboardContext  (shared state)       | |
-|  +--------------------+----------------------+ |
+|  |      DashboardContext  (shared state)      | |
+|  +--------------------+----------------------+  |
 +-----------------------------|-------------------+
                               | HTTPS + JSON
 +-----------------------------|-------------------+
 |   Express 5 Backend  (Node.js ESM, Port 3000)   |
 |                                                 |
 |   Route handlers:                               |
-|   /api/auth    /api/shopify    /api/audit        |
+|   /api/auth    /api/shopify    /api/audit       |
 |   /api/fix     /api/blog                        |
 |                                                 |
 |   Services: ai/gemini | ai/gemma                |
-|             shopify/rest | shopify/data          |
+|             shopify/rest | shopify/data         |
 |   In-memory: tokenStore | policyStore           |
 +--------------------+----------------------------+
          |                        |
@@ -399,22 +373,6 @@ For **Gemma** (product / blog), additional per-key exponential backoff:
 - Ensures `overallScore` exists before accepting response
 - Neutral score (50) returned on full exhaustion — no crash
 
-### Failure Mode Matrix
-
-| Failure Mode | Detection | Recovery |
-|---|---|---|
-| Gemini 429 rate limit | HTTP status | Auto-fallback to next model/key |
-| Gemini overloaded | Error message match | Auto-fallback |
-| Gemini model 404 | HTTP 404 | Skip, try next model |
-| Gemma response blocked | `finishReason !== STOP` | Retry with backoff |
-| Gemma empty output | `rawText === ''` | Retry |
-| Gemma malformed JSON | `JSON.parse` throws | `extractJSON()` bracket-matching |
-| Image fetch fails | HTTP error | Skip image, text-only analysis |
-| Fix — page missing | `userErrors` non-empty | Auto `pageCreate` fallback |
-| Fix — policy auto-managed | `userErrors` has "automatic" | Manual instructions returned |
-| AI returns handle not GID | `lastPart` not numeric | 3-strategy GID resolution |
-| Payload over 200k tokens | Token estimate | Truncate: 50 → 30 products |
-
 ---
 
 ## 🔬 Deep Dive: GEO Audit Engine
@@ -490,11 +448,11 @@ AI Audit Output:
        ▼  "Preview & Fix" button clicked in ActionsPage or ProductsPage
        │
   FixPreviewModal opens:
-  ┌─────────────────────────────────────────────────┐
+  ┌────────────────────────────────────────────────┐
   │  Current value  (red background — read-only)   │
   │              ↓ proposed change                 │
   │  Proposed value (green — EDITABLE textarea)    │
-  └─────────────────────────────────────────────────┘
+  └────────────────────────────────────────────────┘
        │  Merchant reviews, optionally edits, clicks [Apply Fix]
        │
        │  POST /api/fix/apply
@@ -514,7 +472,7 @@ AI Audit Output:
   │  Strategy 3: Kebab-case conversion + retry       │
   │    theBoard → the-board → handle search again    │
   │               │                                  │
-  │  Resolved: gid://shopify/Product/8234567890 ✓   │
+  │  Resolved: gid://shopify/Product/8234567890      │
   └──────────────────────────────────────────────────┘
        │
        ▼  GraphQL / REST Mutation applied to Shopify Admin API
@@ -599,65 +557,6 @@ Merchant enters topic
 ```
 
 ---
-
-## 💬 Deep Dive: Prompting & Output Engineering
-
-### System Prompt Design Principles
-
-| Principle | Implementation |
-|---|---|
-| **Plain language output** | Explicit forbidden-term list: JSON-LD, schema markup, GID, slug, canonical, semantic, metafield, E-E-A-T |
-| **No hallucination** | "If data is missing, state DATA MISSING, apply deduction, never invent data" |
-| **No generic advice** | "Every tip MUST reference specific keys, values, or strings from the input JSON" |
-| **Stable scoring** | Deductive math enforced in prompt with explicit point values per severity |
-| **Machine-applicable fixes** | Every finding must include `fixes[]` with exact `oldValue` + complete `newValue` |
-| **AI-first mindset** | "Ask: Would an AI agent cite this product as a top-3 choice for a relevant query?" |
-
-### Temperature Strategy
-
-| Task | Temperature | Reason |
-|---|---|---|
-| Store GEO audit | `0.1` | Reproducible scores; deterministic issue detection across runs |
-| Per-product analysis | `0.1` | Consistent 15-test forensic evaluation |
-| Blog analysis | `0.1` | Reliable scoring; predictable issue identification |
-| Blog generation | `0.7` | Creative, varied content; non-generic long-form prose |
-
-### Output Format Enforcement
-
-| Model | Enforcement Method |
-|---|---|
-| Gemini (store audit) | `responseMimeType: "application/json"` + custom structural validation |
-| Gemma (product) | `responseSchema: PRODUCT_ANALYSIS_SCHEMA` (JSON Schema enforcement) |
-| Gemma (blog analyze) | `responseSchema: BLOG_ANALYSIS_SCHEMA` |
-| Gemma (blog generate) | `responseSchema: BLOG_GENERATION_SCHEMA` |
-| All models | `extractJSON()` bracket-matching fallback if primary `JSON.parse` fails |
-
----
-
-## 🔐 Security & Authentication
-
-### OAuth 2.0 Implementation
-
-```
-Merchant clicks Install
-       │
-       ▼  GET /api/auth?shop=store.myshopify.com
-       │
-       │  Redirect → Shopify OAuth consent screen
-       │  Parameters: client_id, scopes, redirect_uri, state nonce
-       │
-       ▼  Merchant approves scopes in Shopify
-       │
-       │  GET /api/auth/callback?code=...&hmac=...&shop=...
-       ├─ HMAC-SHA256 verification (crypto.timingSafeEqual — timing-attack safe)
-       ├─ Authorization code → access_token exchange
-       ├─ tokenStore.set(shop, { accessToken })
-       └─ Redirect → React frontend (token in sessionStorage)
-
-  Every subsequent API request:
-  Headers: x-shopify-domain + x-shopify-token
-  Backend: getValidToken(shop, reqToken) validates both
-```
 
 ### Security Measures
 
@@ -832,72 +731,5 @@ npm run dev     # Vite frontend only (port 5173)
 The `ecosystem.config.cjs` in the root provides a PM2 configuration for self-hosting on a VPS.
 
 ---
-
-## 🎨 Deep Dive: Shopify Polaris
-
-Axiom uses **[Shopify Polaris v13](https://polaris.shopify.com/)** as its primary UI system — a deliberate architectural decision, not just a styling choice.
-
-### Why Polaris?
-
-| Benefit | Details |
-|---|---|
-| **Merchant Trust** | Polaris components look identical to native Shopify UI, reducing friction and increasing adoption |
-| **Accessibility** | Full ARIA compliance, keyboard navigation, and screen-reader support built-in |
-| **Responsiveness** | Works seamlessly on Shopify Desktop Admin and the Shopify Mobile App |
-| **Consistency** | Design tokens, spacing, and color systems ensure visual coherence across all four dashboard tabs |
-| **iframe-Ready** | Built for the Shopify Admin iframe context — no custom CSP workarounds needed |
-
-### Key Polaris Components in Use
-
-| Component | Used In | Purpose |
-|---|---|---|
-| `<Page>` | All tabs | Standard page layout with title & action slots |
-| `<Card>` / `<Box>` | All tabs | Content containers with native Shopify styling |
-| `<Banner>` | Error & success states | User-facing status notifications |
-| `<Spinner>` | All async AI calls | Loading indicators during audit / analysis |
-| `<Button>` | All pages | Primary, secondary, and plain action variants |
-| `<Badge>` | Issue severity | CRITICAL / HIGH / MEDIUM / LOW visual tags |
-| `<ProgressBar>` | Layer scores | GEO layer score visualization bars |
-| `<Modal>` | Fix preview | Editable diff view before applying fixes |
-| `<Tabs>` | AppShell | Overview / Actions / Products / Blogs navigation |
-| `<TextField>` | Blog topic input | Polaris-styled inputs |
-
----
-
-## 🧩 Design Decisions & Tradeoffs
-
-### 1. Server-Side Data Fetching (Security > Speed)
-**Decision**: The audit endpoint fetches all store data server-side using admin tokens; the client request body is ignored.
-**Tradeoff**: Adds ~2–5s latency vs. passing frontend data directly.
-**Rationale**: Prevents data forgery. A malicious actor could send fabricated store data to receive a falsely inflated GEO score. Server-side fetching guarantees audit integrity.
-
-### 2. Dual-Model Architecture (Specialization > Simplicity)
-**Decision**: Gemini for store-level audits, Gemma for product and blog analysis.
-**Tradeoff**: More complex codebase; two sets of prompts and schemas to maintain.
-**Rationale**: Gemini excels at large-context reasoning (50 products + policies simultaneously in one pass). Gemma 4 31B excels at multimodal analysis (text + product images). Using each model's strength produces higher-quality outputs than forcing one model to do both.
-
-### 3. Deductive Scoring (Consistency > Flexibility)
-**Decision**: All scores start at 100, deducting only for verified issues.
-**Tradeoff**: Stores rarely score above 70 on first run — can feel harsh.
-**Rationale**: Prevents the #1 LLM scoring problem: arbitrary initial scores that fluctuate between runs. Deductive scoring is monotonic — fixing an issue always improves the score, never reduces it.
-
-### 4. In-Memory Token Storage (Simplicity > Persistence)
-**Decision**: OAuth tokens stored in a JavaScript `Map`, not a database.
-**Tradeoff**: Tokens lost on server restart; merchants must re-authenticate after deploys.
-**Rationale**: Eliminates database setup complexity for hackathon scope. Production would use Redis or PostgreSQL with token encryption at rest.
-
-### 5. Plain Language Blocklist (UX > Technical Precision)
-**Decision**: System prompts contain an explicit blocklist of technical terms requiring plain-language equivalents in output.
-**Tradeoff**: Power users might want technical details like JSON-LD specifics.
-**Rationale**: Target users are non-technical store owners. *"Your product info isn't set up for AI assistants"* is actionable; *"Missing JSON-LD ProductSchema with aggregateRating markup"* is not.
-
-### 6. Hash-Based SPA Routing (iframe Compatibility > DX)
-**Decision**: `window.location.hash` navigation instead of React Router.
-**Tradeoff**: URLs are less clean (`#/products` vs `/products`).
-**Rationale**: Shopify embeds apps inside an iframe. Hash-based routing works without triggering full page reloads or breaking the OAuth session state, and requires zero additional dependencies.
-
----
-
-*Axiom doesn't just tell you what's wrong — it fixes it. One click at a time.*
 
 *Built for the **Kasparro Agentic Commerce Hackathon** · Track 5 (Advanced) · April 2026.*
